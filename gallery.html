@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gallery | JGV3D Guitar Bodies</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <h1>JGV3D Guitar Bodies</h1>
+    <div class="header-buttons">
+      <a href="index.html">Home</a>
+      <a href="shop.html">Shop</a>
+      <a href="about.html">About Us</a>
+      <a href="cart.html">Cart</a>
+      <a href="UsefulLinks.html">Useful Links</a>
+      <a href="login.html">Login</a>
+    </div>
+  </header>
+
+  <!-- Main Gallery Content -->
+  <div class="container">
+    <!-- Sidebar with filters -->
+    <div class="sidebar">
+      <h3>Categories</h3>
+      <div class="categories">
+        <button onclick="filterGallery('all')">All</button>
+        <button onclick="filterGallery('telecaster')">Telecaster</button>
+        <button onclick="filterGallery('stratocaster')">Stratocaster</button>
+        <button onclick="filterGallery('jazzmaster')">Jazzmaster</button>
+        <button onclick="filterGallery('other')">Other</button>
+      </div>
+    </div>
+
+    <!-- Divider Line -->
+    <div class="divider"></div>
+
+    <!-- Gallery container -->
+    <div class="products-container">
+      <h2>Gallery</h2>
+      <div class="products">
+        <!-- Telecaster -->
+        <div class="product" data-category="telecaster">
+          <img src="images/gallery-tele-1.jpg" alt="Telecaster Render 1">
+          <div class="product-title">Telecaster – Flame Maple Burst</div>
+          <div class="product-price">Render</div>
+        </div>
+        <div class="product" data-category="telecaster">
+          <img src="images/gallery-tele-2.jpg" alt="Telecaster Render 2">
+          <div class="product-title">Telecaster – Natural Ash</div>
+          <div class="product-price">Photo</div>
+        </div>
+
+        <!-- Stratocaster -->
+        <div class="product" data-category="stratocaster">
+          <img src="images/gallery-strat-1.jpg" alt="Stratocaster Render 1">
+          <div class="product-title">Stratocaster – Walnut Matte</div>
+          <div class="product-price">Render</div>
+        </div>
+        <div class="product" data-category="stratocaster">
+          <img src="images/gallery-strat-2.jpg" alt="Stratocaster Photo 2">
+          <div class="product-title">Stratocaster – Surf Green</div>
+          <div class="product-price">Photo</div>
+        </div>
+
+        <!-- Jazzmaster -->
+        <div class="product" data-category="jazzmaster">
+          <img src="images/gallery-jazz-1.jpg" alt="Jazzmaster Render 1">
+          <div class="product-title">Jazzmaster – Satin Black</div>
+          <div class="product-price">Render</div>
+        </div>
+
+        <!-- Other -->
+        <div class="product" data-category="other">
+          <img src="images/gallery-other-1.jpg" alt="Other Body">
+          <div class="product-title">Offset Concept – Copper</div>
+          <div class="product-price">Render</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ---------- Sorting for categories and gallery items ---------- */
+    const categoriesContainer = document.querySelector('.categories');
+    const categoryButtons = Array.from(categoriesContainer.querySelectorAll('button'));
+    const [allButton, ...otherButtons] = categoryButtons;
+    otherButtons.sort((a, b) =>
+      a.textContent.trim().localeCompare(b.textContent.trim(), undefined, { sensitivity: 'base' })
+    );
+    categoriesContainer.innerHTML = '';
+    categoriesContainer.appendChild(allButton);
+    otherButtons.forEach(btn => categoriesContainer.appendChild(btn));
+
+    const productsContainer = document.querySelector('.products');
+    const productCards = Array.from(productsContainer.querySelectorAll('.product'));
+
+    const sortedProducts = productCards.sort((a, b) => {
+      const catA = (a.dataset.category || '').toLowerCase();
+      const catB = (b.dataset.category || '').toLowerCase();
+      const titleA = (a.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
+      const titleB = (b.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
+      return catA.localeCompare(catB) || titleA.localeCompare(titleB);
+    });
+
+    function renderGallery(category = 'all') {
+      productsContainer.innerHTML = '';
+      sortedProducts.forEach(card => {
+        const match = category === 'all' || card.dataset.category === category;
+        if (match) {
+          card.style.display = 'block';
+          productsContainer.appendChild(card);
+        }
+      });
+    }
+
+    function filterGallery(category) {
+      renderGallery(category);
+    }
+
+    // Initial render
+    renderGallery('all');
+  </script>
+</body>
+</html>
