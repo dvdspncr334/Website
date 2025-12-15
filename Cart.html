@@ -18,29 +18,118 @@
   <!-- Cart Content -->
   <div class="cart-container">
     <h2>Your Cart</h2>
-    <!-- Example Cart Item (can be replaced dynamically) -->
-    <div class="cart-item">
-      <img src="images/telecaster1.jpg" alt="Telecaster Style">
-      <div class="cart-item-details">
-        <h4>Telecaster Ash Body</h4>
-        <p>Qty: 1</p>
-      </div>
-      <div class="cart-item-price">$179.99</div>
-      <button class="remove-btn">Remove</button>
-    </div>
+    <div id="cart-items"></div>
 
-    <div class="cart-item">
-      <img src="images/stratocaster1.jpg" alt="Stratocaster Style">
-      <div class="cart-item-details">
-        <h4>Stratocaster Walnut Body</h4>
-        <p>Qty: 1</p>
-      </div>
-      <div class="cart-item-price">$210.99</div>
-      <button class="remove-btn">Remove</button>
-    </div>
+    <div id="cart-total" style="margin-top:16px; font-size:1.1em; color:#ff9800;"></div>
 
-    <!-- Checkout Button -->
-    <a href="#" class="checkout-btn">Proceed to Checkout</a>
+    <a href="#" class="checkout-btn" id="checkout-btn">Proceed to Checkout</a>
   </div>
+
+  <script>
+    const CART_KEY = 'jgv3d_cart';
+
+    const cartItemsEl = document.getElementById('cart-items');
+    const cartTotalEl = document.getElementById('cart-total');
+    const checkoutBtn = document.getElementById('checkout-btn');
+
+    function loadCart() {
+      try {
+        return JSON.parse(localStorage.getItem(CART_KEY)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveCart(cart) {
+      localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    }
+
+    function formatPrice(num) {
+      return `$${num.toFixed(2)}`;
+    }
+
+    function renderCart() {
+      const cart = loadCart();
+
+      // Sort alphabetically by title
+      cart.sort((a, b) => (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase()));
+
+      cartItemsEl.innerHTML = '';
+
+      if (cart.length === 0) {
+        cartItemsEl.innerHTML = `<p style="text-align:center; color:#ddd; margin:10px 0;">Your cart is empty.</p>`;
+        cartTotalEl.textContent = '';
+        checkoutBtn.style.display = 'none';
+        return;
+      } else {
+        checkoutBtn.style.display = 'block';
+      }
+
+      let total = 0;
+
+      cart.forEach(item => {
+        const subtotal = item.price * item.qty;
+        total += subtotal;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'cart-item';
+
+        wrapper.innerHTML = `
+          <img src="${item.img || ''}" alt="${item.title || 'Item'}">
+          <div class="cart-item-details">
+            <h4>${item.title || 'Item'}</h4>
+            <div class="qty-control" style="justify-content:flex-start; gap:8px; margin-top:6px;">
+              <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
+              <span class="qty-value">${item.qty}</span>
+              <button class="qty-btn plus" aria-label="Increase quantity">+</button>
+            </div>
+          </div>
+          <div class="cart-item-price">${formatPrice(subtotal)}</div>
+          <button class="remove-btn">Remove</button>
+        `;
+
+        const minus = wrapper.querySelector('.qty-btn.minus');
+        const plus = wrapper.querySelector('.qty-btn.plus');
+        const qtyEl = wrapper.querySelector('.qty-value');
+        const priceEl = wrapper.querySelector('.cart-item-price');
+        const removeBtn = wrapper.querySelector('.remove-btn');
+
+        minus.addEventListener('click', () => {
+          const cartData = loadCart();
+          const entry = cartData.find(x => x.id === item.id);
+          if (!entry) return;
+          entry.qty = Math.max(1, entry.qty - 1);
+          saveCart(cartData);
+          qtyEl.textContent = entry.qty;
+          priceEl.textContent = formatPrice(entry.qty * entry.price);
+          renderCart(); // refresh totals and order
+        });
+
+        plus.addEventListener('click', () => {
+          const cartData = loadCart();
+          const entry = cartData.find(x => x.id === item.id);
+          if (!entry) return;
+          entry.qty += 1;
+          saveCart(cartData);
+          qtyEl.textContent = entry.qty;
+          priceEl.textContent = formatPrice(entry.qty * entry.price);
+          renderCart(); // refresh totals and order
+        });
+
+        removeBtn.addEventListener('click', () => {
+          const cartData = loadCart().filter(x => x.id !== item.id);
+          saveCart(cartData);
+          renderCart();
+        });
+
+        cartItemsEl.appendChild(wrapper);
+      });
+
+      cartTotalEl.textContent = `Total: ${formatPrice(total)}`;
+    }
+
+    // Initial render
+    renderCart();
+  </script>
 </body>
 </html>

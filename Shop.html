@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Shop | JGV3D Guitar Bodies</title>
-  <link rel="stylesheet" href="style.css"> <!-- Link to style.css -->
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <!-- Header -->
@@ -18,7 +18,7 @@
   <!-- Main Shop Content -->
   <div class="container">
     <!-- Sidebar with filters -->
-    <aside class="sidebar">
+    <div class="sidebar">
       <h3>Categories</h3>
       <div class="categories">
         <button onclick="filterProducts('all')">All</button>
@@ -26,56 +26,163 @@
         <button onclick="filterProducts('stratocaster')">Stratocaster</button>
         <button onclick="filterProducts('jazzmaster')">Jazzmaster</button>
       </div>
-    </aside>
-
+    </div>
     <!-- Divider Line -->
     <div class="divider"></div>
-
-    <!-- Products Container -->
-    <main class="products-container">
+    <!-- Products container -->
+    <div class="products-container">
       <h2>Shop Guitar Bodies</h2>
       <div class="products">
-        <!-- Example Product 1 (Telecaster) -->
-        <div class="product" data-category="telecaster">
+        <div class="product" data-category="telecaster" data-id="telecaster-ash-body">
           <img src="images/telecaster1.jpg" alt="Telecaster Style">
           <div class="product-title">Telecaster Ash Body</div>
           <div class="product-price">$179.99</div>
-          <button class="buy-btn">Buy Now</button>
+
+          <div class="qty-control">
+            <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
+            <span class="qty-value">1</span>
+            <button class="qty-btn plus" aria-label="Increase quantity">+</button>
+          </div>
+
+          <button class="add-btn">Add to Cart</button>
         </div>
-        <!-- Example Product 2 (Stratocaster) -->
-        <div class="product" data-category="stratocaster">
+
+        <div class="product" data-category="stratocaster" data-id="stratocaster-walnut-body">
           <img src="images/stratocaster1.jpg" alt="Stratocaster Style">
           <div class="product-title">Stratocaster Walnut Body</div>
           <div class="product-price">$210.99</div>
-          <button class="buy-btn">Buy Now</button>
+
+          <div class="qty-control">
+            <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
+            <span class="qty-value">1</span>
+            <button class="qty-btn plus" aria-label="Increase quantity">+</button>
+          </div>
+
+          <button class="add-btn">Add to Cart</button>
         </div>
-        <!-- Example Product 3 (Jazzmaster) -->
-        <div class="product" data-category="jazzmaster">
+
+        <div class="product" data-category="jazzmaster" data-id="jazzmaster-alder-body">
           <img src="images/jazzmaster1.jpg" alt="Jazzmaster Style">
           <div class="product-title">Jazzmaster Alder Body</div>
           <div class="product-price">$199.99</div>
-          <button class="buy-btn">Buy Now</button>
+
+          <div class="qty-control">
+            <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
+            <span class="qty-value">1</span>
+            <button class="qty-btn plus" aria-label="Increase quantity">+</button>
+          </div>
+
+          <button class="add-btn">Add to Cart</button>
         </div>
       </div>
-    </main>
+    </div>
   </div>
 
-  <!-- JavaScript for Filtering -->
   <script>
-    function filterProducts(category) {
-      const products = document.querySelectorAll('.product');
+    /* ---------- Sorting for categories and products ---------- */
+    const categoriesContainer = document.querySelector('.categories');
+    const categoryButtons = Array.from(categoriesContainer.querySelectorAll('button'));
+    const [allButton, ...otherButtons] = categoryButtons;
+    otherButtons.sort((a, b) =>
+      a.textContent.trim().localeCompare(b.textContent.trim(), undefined, { sensitivity: 'base' })
+    );
+    categoriesContainer.innerHTML = '';
+    categoriesContainer.appendChild(allButton);
+    otherButtons.forEach(btn => categoriesContainer.appendChild(btn));
 
-      products.forEach(product => {
-        if (category === 'all' || product.dataset.category === category) {
-          product.style.display = 'block'; // Show product
-        } else {
-          product.style.display = 'none'; // Hide product
+    const productsContainer = document.querySelector('.products');
+    const productCards = Array.from(productsContainer.querySelectorAll('.product'));
+
+    const sortedProducts = productCards.sort((a, b) => {
+      const catA = (a.dataset.category || '').toLowerCase();
+      const catB = (b.dataset.category || '').toLowerCase();
+      const titleA = (a.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
+      const titleB = (b.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
+      return catA.localeCompare(catB) || titleA.localeCompare(titleB);
+    });
+
+    function renderProducts(category = 'all') {
+      productsContainer.innerHTML = '';
+      sortedProducts.forEach(card => {
+        const match = category === 'all' || card.dataset.category === category;
+        if (match) {
+          card.style.display = 'block';
+          productsContainer.appendChild(card);
         }
       });
     }
 
-    // Show all products by default when the page loads
-    filterProducts('all');
+    function filterProducts(category) {
+      renderProducts(category);
+    }
+
+    /* ---------- Cart helpers (localStorage) ---------- */
+    const CART_KEY = 'jgv3d_cart';
+
+    function loadCart() {
+      try {
+        return JSON.parse(localStorage.getItem(CART_KEY)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveCart(cart) {
+      localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    }
+
+    function addToCart(card) {
+      const id = card.dataset.id;
+      const title = card.querySelector('.product-title')?.textContent.trim() || 'Item';
+      const priceText = card.querySelector('.product-price')?.textContent.replace(/[^0-9.]/g, '') || '0';
+      const price = parseFloat(priceText);
+      const img = card.querySelector('img')?.getAttribute('src') || '';
+      const qty = parseInt(card.querySelector('.qty-value')?.textContent || '1', 10);
+
+      if (!id || !qty || qty < 1) return;
+
+      const cart = loadCart();
+      const existing = cart.find(item => item.id === id);
+      if (existing) {
+        existing.qty += qty;
+      } else {
+        cart.push({ id, title, price, img, qty });
+      }
+      saveCart(cart);
+
+      // reset qty to 1
+      const qtyEl = card.querySelector('.qty-value');
+      if (qtyEl) qtyEl.textContent = '1';
+
+      alert(`${qty} × ${title} added to cart.`);
+    }
+
+    /* ---------- Quantity controls wiring ---------- */
+    function wireQuantityControls(card) {
+      const minus = card.querySelector('.qty-btn.minus');
+      const plus = card.querySelector('.qty-btn.plus');
+      const display = card.querySelector('.qty-value');
+
+      if (minus && plus && display) {
+        minus.addEventListener('click', () => {
+          const current = parseInt(display.textContent || '1', 10);
+          display.textContent = Math.max(1, current - 1);
+        });
+        plus.addEventListener('click', () => {
+          const current = parseInt(display.textContent || '1', 10);
+          display.textContent = current + 1;
+        });
+      }
+
+      const addBtn = card.querySelector('.add-btn');
+      if (addBtn) {
+        addBtn.addEventListener('click', () => addToCart(card));
+      }
+    }
+
+    // Initial render and wiring
+    renderProducts('all');
+    sortedProducts.forEach(wireQuantityControls);
   </script>
 </body>
 </html>

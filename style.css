@@ -1,4 +1,7 @@
-/* General Page Styling */
+/* ==========================================================
+   Global Styles
+   ========================================================== */
+
 body {
   font-family: Arial, sans-serif;
   background: #222;
@@ -7,7 +10,10 @@ body {
   padding: 0;
 }
 
-/* Header Styling */
+/* ==========================================================
+   Header
+   ========================================================== */
+
 header {
   display: flex;
   justify-content: space-between;
@@ -40,7 +46,10 @@ header h1 {
   background: #d35400;
 }
 
-/* Hero Section (Index Page) */
+/* ==========================================================
+   Hero Section
+   ========================================================== */
+
 .hero {
   background: url('images/hero-guitar.jpg') center/cover no-repeat;
   height: 75vh;
@@ -87,7 +96,10 @@ header h1 {
   background: #d35400;
 }
 
-/* Features Section (Index Page) */
+/* ==========================================================
+   Features Section
+   ========================================================== */
+
 .features {
   text-align: center;
   padding: 40px 20px;
@@ -124,7 +136,10 @@ header h1 {
   margin: 10px 0;
 }
 
-/* Testimonials Section (Index Page) */
+/* ==========================================================
+   Testimonials Section
+   ========================================================== */
+
 .testimonials {
   padding: 40px 20px;
   text-align: center;
@@ -154,7 +169,10 @@ header h1 {
   color: #fff;
 }
 
-/* Footer Section */
+/* ==========================================================
+   Footer
+   ========================================================== */
+
 footer {
   background: #333;
   color: #aaa;
@@ -172,7 +190,10 @@ footer a:hover {
   text-decoration: underline;
 }
 
-/* About Page: Content Section */
+/* ==========================================================
+   About Page
+   ========================================================== */
+
 .about-container {
   max-width: 800px;
   margin: 40px auto;
@@ -200,25 +221,28 @@ footer a:hover {
   margin: 20px auto;
 }
 
-/* Shop Page: Sidebar and Product Layout */
+/* ==========================================================
+   Shop Page
+   ========================================================== */
+
 .container {
-  display: flex; /* Sidebar on left and product grid on right */
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
+  display: flex;
+  align-items: stretch; /* ensure divider spans full height */
+  width: 100%;         /* use full page width */
+  max-width: none;     /* remove width cap */
+  margin: 0;           /* no centering */
+  padding: 20px;       /* keep consistent breathing room */
 }
 
 .sidebar {
-  width: 300px;
-  margin-right: 25px;
-  background: #333;
-  border-radius: 8px;
-  padding: 20px;
+  width: 200px;
+  flex-shrink: 0;
+  margin-right: 20px;
 }
 
 .sidebar h3 {
   font-size: 1.5em;
-  margin-bottom: 15px;
+  margin: 0 0 10px 0;
   color: #e67e22;
 }
 
@@ -226,16 +250,17 @@ footer a:hover {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-bottom: 20px;
 }
 
 .categories button {
-  padding: 12px;
+  padding: 10px;
   background: #e67e22;
   color: #fff;
   border: none;
   border-radius: 6px;
-  font-size: 1em;
   cursor: pointer;
+  font-size: 1em;
   transition: background 0.3s ease-in-out;
 }
 
@@ -243,33 +268,40 @@ footer a:hover {
   background: #d35400;
 }
 
-/* Divider Line for Sidebar */
+/* Divider Line */
 .divider {
   width: 2px;
   background: #444;
   margin-right: 20px;
-  height: auto; /* Matches the entire content height */
+  flex-shrink: 0;
+  align-self: stretch; /* full height of container */
 }
 
-/* Product Grid */
+/* Products */
 .products-container {
   flex-grow: 1;
+}
+
+.products-container h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: #e67e22;
 }
 
 .products {
   display: flex;
   flex-wrap: wrap;
-  gap: 20px;
-  justify-content: flex-start;
+  gap: 24px;
 }
 
 .product {
   background: #333;
   border-radius: 8px;
-  padding: 20px;
+  padding: 16px;
   text-align: center;
   border: 1px solid #444;
-  width: 280px; /* Fixed width for product cards */
+  width: 280px;
+  display: none; /* Hidden by default for filtering */
 }
 
 .product img {
@@ -278,20 +310,48 @@ footer a:hover {
 }
 
 .product-title {
-  margin-top: 16px;
   font-weight: bold;
-  font-size: 1.2em;
+  margin-top: 12px;
   color: #e67e22;
 }
 
 .product-price {
-  font-size: 1.1em;
   margin: 8px 0;
   color: #ff9800;
 }
 
-/* Buy Button Styling */
-.buy-btn {
+/* Quantity selector and Add button */
+.qty-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.qty-btn {
+  background: #444;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 6px;
+  width: 36px;
+  height: 36px;
+  font-size: 1.2em;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.qty-btn:hover {
+  background: #555;
+}
+
+.qty-value {
+  min-width: 24px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.add-btn {
   background: #28a745;
   color: white;
   padding: 10px 16px;
@@ -300,8 +360,98 @@ footer a:hover {
   font-size: 1em;
   cursor: pointer;
   transition: background 0.3s ease-in-out;
+  width: 100%;
 }
 
-.buy-btn:hover {
+.add-btn:hover {
+  background: #218838;
+}
+
+/* ==========================================================
+   Cart Page
+   ========================================================== */
+
+.cart-container {
+  max-width: 1200px;
+  margin: 20px auto;
+  background: #333;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.cart-container h2 {
+  text-align: center;
+  color: #e67e22;
+  margin-bottom: 20px;
+}
+
+.cart-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #444;
+}
+
+.cart-item:last-child {
+  border-bottom: none;
+}
+
+.cart-item img {
+  width: 80px;
+  border-radius: 8px;
+}
+
+.cart-item-details {
+  flex: 1;
+  margin-left: 20px;
+}
+
+.cart-item-details h4 {
+  margin: 0;
+  color: #e67e22;
+}
+
+.cart-item-details p {
+  margin: 5px 0;
+  color: #ddd;
+}
+
+.cart-item-price {
+  font-size: 1.2em;
+  color: #ff9800;
+  margin-right: 20px;
+}
+
+.remove-btn {
+  background: #e74c3c;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.remove-btn:hover {
+  background: #c0392b;
+}
+
+.checkout-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 15px 0;
+  margin-top: 20px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1em;
+  text-decoration: none;
+}
+
+.checkout-btn:hover {
   background: #218838;
 }
