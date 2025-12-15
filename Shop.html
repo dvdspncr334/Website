@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Shop | JGV3D Guitar Bodies</title>
+  <link rel="stylesheet" href="style.css"> <!-- Link to style.css -->
+</head>
+<body>
+  <!-- Header -->
+  <header>
+    <h1>JGV3D Guitar Bodies</h1>
+    <div class="header-buttons">
+      <a href="index.html">Home</a>
+      <a href="cart.html">Cart</a>
+    </div>
+  </header>
+
+  <!-- Main Shop Content -->
+  <div class="container">
+    <!-- Sidebar with filters -->
+    <aside class="sidebar">
+      <h3>Categories</h3>
+      <div class="categories">
+        <button onclick="filterProducts('all')">All</button>
+        <button onclick="filterProducts('telecaster')">Telecaster</button>
+        <button onclick="filterProducts('stratocaster')">Stratocaster</button>
+        <button onclick="filterProducts('jazzmaster')">Jazzmaster</button>
+      </div>
+    </aside>
+
+    <!-- Divider Line -->
+    <div class="divider"></div>
+
+    <!-- Products Container -->
+    <main class="products-container">
+      <h2>Shop Guitar Bodies</h2>
+      <div class="products">
+        <!-- Example Product 1 (Telecaster) -->
+        <div class="product" data-category="telecaster">
+          <img src="images/telecaster1.jpg" alt="Telecaster Style">
+          <div class="product-title">Telecaster Ash Body</div>
+          <div class="product-price">$179.99</div>
+          <button class="buy-btn">Buy Now</button>
+        </div>
+        <!-- Example Product 2 (Stratocaster) -->
+        <div class="product" data-category="stratocaster">
+          <img src="images/stratocaster1.jpg" alt="Stratocaster Style">
+          <div class="product-title">Stratocaster Walnut Body</div>
+          <div class="product-price">$210.99</div>
+          <button class="buy-btn">Buy Now</button>
+        </div>
+        <!-- Example Product 3 (Jazzmaster) -->
+        <div class="product" data-category="jazzmaster">
+          <img src="images/jazzmaster1.jpg" alt="Jazzmaster Style">
+          <div class="product-title">Jazzmaster Alder Body</div>
+          <div class="product-price">$199.99</div>
+          <button class="buy-btn">Buy Now</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- JavaScript for Filtering -->
+  <script>
+    function filterProducts(category) {
+      const products = document.querySelectorAll('.product');
+
+      products.forEach(product => {
+        if (category === 'all' || product.dataset.category === category) {
+          product.style.display = 'block'; // Show product
+        } else {
+          product.style.display = 'none'; // Hide product
+        }
+      });
+    }
+
+    // Show all products by default when the page loads
+    filterProducts('all');
+  </script>
+</body>
+</html>
