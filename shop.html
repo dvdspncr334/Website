@@ -150,11 +150,9 @@
       }
       saveCart(cart);
 
-      // reset qty to 1
+      // reset qty to 1 (silent, no alert)
       const qtyEl = card.querySelector('.qty-value');
       if (qtyEl) qtyEl.textContent = '1';
-
-      alert(`${qty} × ${title} added to cart.`);
     }
 
     /* ---------- Quantity controls wiring ---------- */
