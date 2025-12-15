@@ -15,6 +15,9 @@
     </div>
   </header>
 
+  <!-- Toast -->
+  <div id="toast" class="toast" aria-live="polite"></div>
+
   <!-- Main Shop Content -->
   <div class="container">
     <!-- Sidebar with filters -->
@@ -118,6 +121,7 @@
 
     /* ---------- Cart helpers (localStorage) ---------- */
     const CART_KEY = 'jgv3d_cart';
+    let toastTimeout;
 
     function loadCart() {
       try {
@@ -129,6 +133,15 @@
 
     function saveCart(cart) {
       localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      if (!toast) return;
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => toast.classList.remove('show'), 2200);
     }
 
     function addToCart(card) {
@@ -150,9 +163,10 @@
       }
       saveCart(cart);
 
-      // reset qty to 1 (silent, no alert)
+      // reset qty to 1 and show toast (non-blocking)
       const qtyEl = card.querySelector('.qty-value');
       if (qtyEl) qtyEl.textContent = '1';
+      showToast(`${qty} × ${title} added to cart`);
     }
 
     /* ---------- Quantity controls wiring ---------- */
