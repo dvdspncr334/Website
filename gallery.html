@@ -83,7 +83,9 @@
 
     async function loadGallery() {
       try {
-        const response = await fetch('data/gallery.csv');
+        const response = await fetch('data/gallery.csv?t=' + Date.now(), {
+          cache: 'no-store'
+        });
         if (!response.ok) throw new Error('Failed to load gallery.csv');
         const text = await response.text();
         const items = parseCSV(text);
