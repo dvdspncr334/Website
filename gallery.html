@@ -39,70 +39,77 @@
     <!-- Gallery container -->
     <div class="products-container">
       <h2>Gallery</h2>
-      <div class="products">
-        <!-- Telecaster -->
-        <div class="product" data-category="telecaster">
-          <img src="images/Telecaster_white_blank.png" alt="Telecaster Render 1">
-          <div class="product-title">Telecaster – Blank</div>
-          <div class="product-price">Render</div>
-        </div>
-        <div class="product" data-category="telecaster">
-          <img src="images/Telecaster_white_hexagon.png" alt="Telecaster Render 2">
-          <div class="product-title">Telecaster – Hexagon</div>
-          <div class="product-price">Photo</div>
-        </div>
-
-        <!-- Stratocaster -->
-        <div class="product" data-category="stratocaster">
-          <img src="images/Stratocaster_white_blank.png" alt="Stratocaster Render 1">
-          <div class="product-title">Stratocaster – Blank</div>
-          <div class="product-price">Render</div>
-        </div>
-        <div class="product" data-category="stratocaster">
-          <img src="images/Stratocaster_white_hexagon.png" alt="Stratocaster Photo 2">
-          <div class="product-title">Stratocaster – Hexagon</div>
-          <div class="product-price">Render</div>
-        </div>
-
-        <!-- Jazzmaster -->
-        <div class="product" data-category="jazzmaster">
-          <img src="images/gallery-jazz-1.jpg" alt="Jazzmaster Render 1">
-          <div class="product-title">Jazzmaster – Satin Black</div>
-          <div class="product-price">Render</div>
-        </div>
-
-        <!-- Other -->
-        <div class="product" data-category="other">
-          <img src="images/gallery-other-1.jpg" alt="Other Body">
-          <div class="product-title">Offset Concept – Copper</div>
-          <div class="product-price">Render</div>
-        </div>
-      </div>
+      <div class="products"></div>
     </div>
   </div>
 
   <script>
-    /* ---------- Sorting for categories and gallery items ---------- */
-    const categoriesContainer = document.querySelector('.categories');
-    const categoryButtons = Array.from(categoriesContainer.querySelectorAll('button'));
-    const [allButton, ...otherButtons] = categoryButtons;
-    otherButtons.sort((a, b) =>
-      a.textContent.trim().localeCompare(b.textContent.trim(), undefined, { sensitivity: 'base' })
-    );
-    categoriesContainer.innerHTML = '';
-    categoriesContainer.appendChild(allButton);
-    otherButtons.forEach(btn => categoriesContainer.appendChild(btn));
-
+    /* ---------- CSV Parsing and Loading ---------- */
+    let sortedProducts = [];
     const productsContainer = document.querySelector('.products');
-    const productCards = Array.from(productsContainer.querySelectorAll('.product'));
 
-    const sortedProducts = productCards.sort((a, b) => {
-      const catA = (a.dataset.category || '').toLowerCase();
-      const catB = (b.dataset.category || '').toLowerCase();
-      const titleA = (a.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
-      const titleB = (b.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
-      return catA.localeCompare(catB) || titleA.localeCompare(titleB);
-    });
+    function parseCSV(text) {
+      const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+      if (lines.length < 2) return [];
+      const headers = lines[0].split(',').map(h => h.trim());
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        if (values.length === headers.length) {
+          const obj = {};
+          headers.forEach((h, idx) => { obj[h] = values[idx]; });
+          rows.push(obj);
+        } else {
+          console.warn('Skipping malformed CSV row:', lines[i]);
+        }
+      }
+      return rows;
+    }
+
+    function createGalleryCard(item) {
+      const card = document.createElement('div');
+      card.className = 'product';
+      card.dataset.category = item.category || '';
+      card.style.display = 'block';
+
+      card.innerHTML = `
+        <img src="${item.img || ''}" alt="${item.title || 'Gallery Item'}">
+        <div class="product-title">${item.title || ''}</div>
+        <div class="product-price">${item.label || ''}</div>
+      `;
+
+      return card;
+    }
+
+    async function loadGallery() {
+      try {
+        const response = await fetch('data/gallery.csv?t=' + Date.now(), {
+          cache: 'no-store'
+        });
+        if (!response.ok) throw new Error('Failed to load gallery.csv');
+        const text = await response.text();
+        const items = parseCSV(text);
+
+        if (items.length === 0) {
+          productsContainer.innerHTML = '<p style="color:#ddd;">No gallery items available.</p>';
+          return;
+        }
+
+        const galleryCards = items.map(createGalleryCard);
+        sortedProducts = galleryCards.sort((a, b) => {
+          const catA = (a.dataset.category || '').toLowerCase();
+          const catB = (b.dataset.category || '').toLowerCase();
+          const titleA = (a.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
+          const titleB = (b.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
+          return catA.localeCompare(catB) || titleA.localeCompare(titleB);
+        });
+
+        renderGallery('all');
+      } catch (error) {
+        console.error('Error loading gallery:', error);
+        productsContainer.innerHTML = '<p style="color:#ddd;">Failed to load gallery items. Please try again later.</p>';
+      }
+    }
 
     function renderGallery(category = 'all') {
       productsContainer.innerHTML = '';
@@ -119,8 +126,19 @@
       renderGallery(category);
     }
 
-    // Initial render
-    renderGallery('all');
+    /* ---------- Sorting for categories ---------- */
+    const categoriesContainer = document.querySelector('.categories');
+    const categoryButtons = Array.from(categoriesContainer.querySelectorAll('button'));
+    const [allButton, ...otherButtons] = categoryButtons;
+    otherButtons.sort((a, b) =>
+      a.textContent.trim().localeCompare(b.textContent.trim(), undefined, { sensitivity: 'base' })
+    );
+    categoriesContainer.innerHTML = '';
+    categoriesContainer.appendChild(allButton);
+    otherButtons.forEach(btn => categoriesContainer.appendChild(btn));
+
+    // Load gallery items from CSV on page load
+    loadGallery();
   </script>
 </body>
 </html>
