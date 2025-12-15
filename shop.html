@@ -25,9 +25,6 @@
       <h3>Categories</h3>
       <div class="categories">
         <button onclick="filterProducts('all')">All</button>
-        <button onclick="filterProducts('telecaster')">Telecaster</button>
-        <button onclick="filterProducts('stratocaster')">Stratocaster</button>
-        <button onclick="filterProducts('jazzmaster')">Jazzmaster</button>
       </div>
     </div>
     <!-- Divider Line -->
@@ -35,74 +32,94 @@
     <!-- Products container -->
     <div class="products-container">
       <h2>Shop Guitar Bodies</h2>
-      <div class="products">
-        <div class="product" data-category="telecaster" data-id="telecaster-ash-body">
-          <img src="images/telecaster1.jpg" alt="Telecaster Style">
-          <div class="product-title">Telecaster Ash Body</div>
-          <div class="product-price">$179.99</div>
-
-          <div class="qty-control">
-            <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
-            <span class="qty-value">1</span>
-            <button class="qty-btn plus" aria-label="Increase quantity">+</button>
-          </div>
-
-          <button class="add-btn">Add to Cart</button>
-        </div>
-
-        <div class="product" data-category="stratocaster" data-id="stratocaster-walnut-body">
-          <img src="images/stratocaster1.jpg" alt="Stratocaster Style">
-          <div class="product-title">Stratocaster Walnut Body</div>
-          <div class="product-price">$210.99</div>
-
-          <div class="qty-control">
-            <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
-            <span class="qty-value">1</span>
-            <button class="qty-btn plus" aria-label="Increase quantity">+</button>
-          </div>
-
-          <button class="add-btn">Add to Cart</button>
-        </div>
-
-        <div class="product" data-category="jazzmaster" data-id="jazzmaster-alder-body">
-          <img src="images/jazzmaster1.jpg" alt="Jazzmaster Style">
-          <div class="product-title">Jazzmaster Alder Body</div>
-          <div class="product-price">$199.99</div>
-
-          <div class="qty-control">
-            <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
-            <span class="qty-value">1</span>
-            <button class="qty-btn plus" aria-label="Increase quantity">+</button>
-          </div>
-
-          <button class="add-btn">Add to Cart</button>
-        </div>
-      </div>
+      <div class="products"></div>
     </div>
   </div>
 
   <script>
-    /* ---------- Sorting for categories and products ---------- */
-    const categoriesContainer = document.querySelector('.categories');
-    const categoryButtons = Array.from(categoriesContainer.querySelectorAll('button'));
-    const [allButton, ...otherButtons] = categoryButtons;
-    otherButtons.sort((a, b) =>
-      a.textContent.trim().localeCompare(b.textContent.trim(), undefined, { sensitivity: 'base' })
-    );
-    categoriesContainer.innerHTML = '';
-    categoriesContainer.appendChild(allButton);
-    otherButtons.forEach(btn => categoriesContainer.appendChild(btn));
-
+    /* ---------- CSV Loading and Parsing ---------- */
+    let sortedProducts = [];
     const productsContainer = document.querySelector('.products');
-    const productCards = Array.from(productsContainer.querySelectorAll('.product'));
+    const categoriesContainer = document.querySelector('.categories');
 
-    const sortedProducts = productCards.sort((a, b) => {
-      const catA = (a.dataset.category || '').toLowerCase();
-      const catB = (b.dataset.category || '').toLowerCase();
-      const titleA = (a.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
-      const titleB = (b.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
-      return catA.localeCompare(catB) || titleA.localeCompare(titleB);
-    });
+    function parseCSV(text) {
+      const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+      if (lines.length < 2) return [];
+      
+      const headers = lines[0].split(',').map(h => h.trim());
+      const rows = [];
+      
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        if (values.length !== headers.length) {
+          console.warn(`Skipping malformed row ${i}: ${lines[i]}`);
+          continue;
+        }
+        const row = {};
+        headers.forEach((header, idx) => {
+          row[header] = values[idx];
+        });
+        rows.push(row);
+      }
+      
+      return rows;
+    }
+
+    function createProductCard(item) {
+      const card = document.createElement('div');
+      card.className = 'product';
+      card.dataset.category = item.category || '';
+      card.dataset.id = item.id || '';
+      
+      const img = document.createElement('img');
+      img.src = item.img || '';
+      img.alt = item.title || 'Product';
+      card.appendChild(img);
+      
+      const title = document.createElement('div');
+      title.className = 'product-title';
+      title.textContent = item.title || '';
+      card.appendChild(title);
+      
+      const price = document.createElement('div');
+      price.className = 'product-price';
+      price.textContent = `$${parseFloat(item.price || 0).toFixed(2)}`;
+      card.appendChild(price);
+      
+      const qtyControl = document.createElement('div');
+      qtyControl.className = 'qty-control';
+      qtyControl.innerHTML = `
+        <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
+        <span class="qty-value">1</span>
+        <button class="qty-btn plus" aria-label="Increase quantity">+</button>
+      `;
+      card.appendChild(qtyControl);
+      
+      const addBtn = document.createElement('button');
+      addBtn.className = 'add-btn';
+      addBtn.textContent = 'Add to Cart';
+      card.appendChild(addBtn);
+      
+      return card;
+    }
+
+    function buildCategoryButtons(products) {
+      const categories = new Set();
+      products.forEach(p => {
+        if (p.category) categories.add(p.category);
+      });
+      
+      const sortedCategories = Array.from(categories).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' })
+      );
+      
+      sortedCategories.forEach(cat => {
+        const btn = document.createElement('button');
+        btn.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
+        btn.onclick = () => filterProducts(cat);
+        categoriesContainer.appendChild(btn);
+      });
+    }
 
     function renderProducts(category = 'all') {
       productsContainer.innerHTML = '';
@@ -192,9 +209,51 @@
       }
     }
 
-    // Initial render and wiring
-    renderProducts('all');
-    sortedProducts.forEach(wireQuantityControls);
+    /* ---------- Load and Initialize ---------- */
+    async function loadShopData() {
+      try {
+        const response = await fetch('data/shop.csv');
+        if (!response.ok) {
+          throw new Error(`Failed to load shop.csv: ${response.status}`);
+        }
+        
+        const csvText = await response.text();
+        const products = parseCSV(csvText);
+        
+        if (products.length === 0) {
+          productsContainer.innerHTML = '<p style="color: #ddd; text-align: center;">No products available at this time.</p>';
+          return;
+        }
+        
+        // Build category buttons
+        buildCategoryButtons(products);
+        
+        // Create product cards
+        const productCards = products.map(createProductCard);
+        
+        // Sort products by category then title
+        sortedProducts = productCards.sort((a, b) => {
+          const catA = (a.dataset.category || '').toLowerCase();
+          const catB = (b.dataset.category || '').toLowerCase();
+          const titleA = (a.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
+          const titleB = (b.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
+          return catA.localeCompare(catB) || titleA.localeCompare(titleB);
+        });
+        
+        // Wire up controls
+        sortedProducts.forEach(wireQuantityControls);
+        
+        // Initial render
+        renderProducts('all');
+        
+      } catch (error) {
+        console.error('Error loading shop data:', error);
+        productsContainer.innerHTML = '<p style="color: #ddd; text-align: center;">Failed to load products. Please try again later.</p>';
+      }
+    }
+
+    // Initialize on page load
+    loadShopData();
   </script>
 </body>
 </html>
