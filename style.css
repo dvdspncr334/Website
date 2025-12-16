@@ -540,3 +540,77 @@ footer a:hover {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+
+/* ==========================================================
+   Gallery hover overlay + larger thumbs
+   ========================================================== */
+.products .product .gallery-img-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #2b2b2b;
+}
+
+.products .product img {
+  width: 100%;
+  max-height: 280px;
+  object-fit: cover;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+.products .product:hover img {
+  transform: scale(1.06);
+  opacity: 0.96;
+}
+
+.gallery-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.gallery-overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.gallery-overlay-content {
+  background: #1f1f1f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.gallery-overlay-content img {
+  max-width: 88vw;
+  max-height: 80vh;
+  border-radius: 10px;
+  object-fit: contain;
+}
+
+.gallery-overlay-title {
+  color: #e67e22;
+  font-weight: 700;
+  text-align: center;
+}
+
+.gallery-overlay-label {
+  color: #ccc;
+  font-size: 0.95em;
+  text-align: center;
+}
