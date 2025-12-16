@@ -227,11 +227,11 @@ footer a:hover {
 
 .container {
   display: flex;
-  align-items: stretch; /* ensure divider spans full height */
-  width: 100%;         /* use full page width */
-  max-width: none;     /* remove width cap */
-  margin: 0;           /* no centering */
-  padding: 20px;       /* keep consistent breathing room */
+  align-items: stretch;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 20px;
 }
 
 .sidebar {
@@ -274,7 +274,7 @@ footer a:hover {
   background: #444;
   margin-right: 20px;
   flex-shrink: 0;
-  align-self: stretch; /* full height of container */
+  align-self: stretch;
 }
 
 /* Products */
@@ -542,7 +542,7 @@ footer a:hover {
 }
 
 /* ==========================================================
-   Gallery hover overlay + larger thumbs
+   Gallery hover overlay + modal
    ========================================================== */
 .products .product .gallery-img-wrap {
   position: relative;
@@ -563,6 +563,7 @@ footer a:hover {
   opacity: 0.96;
 }
 
+/* Modal overlay */
 .gallery-overlay {
   position: fixed;
   inset: 0;
@@ -583,10 +584,11 @@ footer a:hover {
 }
 
 .gallery-overlay-content {
+  position: relative;
   background: #1f1f1f;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  padding: 12px;
+  padding: 16px 16px 12px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
   max-width: 90vw;
   max-height: 90vh;
@@ -613,4 +615,26 @@ footer a:hover {
   color: #ccc;
   font-size: 0.95em;
   text-align: center;
+}
+
+.gallery-overlay-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  background: #333;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+  line-height: 26px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.gallery-overlay-close:hover {
+  background: #444;
+  transform: scale(1.05);
 }
