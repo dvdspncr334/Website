@@ -91,6 +91,8 @@
 
     /* ---------- Product Card Creation ---------- */
     function createProductCard(item) {
+      const PLACEHOLDER_IMG = 'images/placeholder.png';
+      
       const card = document.createElement('div');
       card.className = 'product';
       card.dataset.id = item.id || '';
@@ -105,7 +107,7 @@
 
       const price = parseFloat(item.price);
       const priceDisplay = isNaN(price) ? 'Contact for price' : `$${price.toFixed(2)}`;
-      const imgSrc = item.img || 'images/placeholder.png';
+      const imgSrc = item.img || PLACEHOLDER_IMG;
 
       // Parse options
       const handednessOptions = (item.handedness || '').split('|').filter(h => h);
@@ -115,26 +117,28 @@
 
       let optionsHTML = '';
       
-      // Handedness selector
-      if (handednessOptions.length > 0 && item.handedness !== 'both') {
-        optionsHTML += `
-          <div class="option-group">
-            <label class="option-label">Handedness:</label>
-            <select class="option-select handedness-select">
-              ${handednessOptions.map(h => `<option value="${h}">${h.charAt(0).toUpperCase() + h.slice(1)}</option>`).join('')}
-            </select>
-          </div>
-        `;
-      } else if (handednessOptions.length > 0 && item.handedness === 'both') {
-        optionsHTML += `
-          <div class="option-group">
-            <label class="option-label">Handedness:</label>
-            <select class="option-select handedness-select">
-              <option value="right">Right</option>
-              <option value="left">Left</option>
-            </select>
-          </div>
-        `;
+      // Handedness selector - show if handedness is specified
+      if (item.handedness && item.handedness !== '') {
+        if (item.handedness === 'both') {
+          optionsHTML += `
+            <div class="option-group">
+              <label class="option-label">Handedness:</label>
+              <select class="option-select handedness-select">
+                <option value="right">Right</option>
+                <option value="left">Left</option>
+              </select>
+            </div>
+          `;
+        } else if (item.handedness === 'right' || item.handedness === 'left') {
+          optionsHTML += `
+            <div class="option-group">
+              <label class="option-label">Handedness:</label>
+              <select class="option-select handedness-select">
+                <option value="${item.handedness}">${item.handedness.charAt(0).toUpperCase() + item.handedness.slice(1)}</option>
+              </select>
+            </div>
+          `;
+        }
       }
 
       // Pickup configuration selector
@@ -163,7 +167,7 @@
       }
 
       card.innerHTML = `
-        <img src="${imgSrc}" alt="${item.title || 'Product'}" onerror="this.src='images/placeholder.png'">
+        <img src="${imgSrc}" alt="${item.title || 'Product'}" onerror="this.src='${PLACEHOLDER_IMG}'">
         <div class="product-title">${item.title || ''}</div>
         <div class="product-price">${priceDisplay}</div>
         ${optionsHTML ? `<div class="product-options">${optionsHTML}</div>` : ''}

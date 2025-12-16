@@ -96,13 +96,14 @@
     }
 
     /* ---------- Modal helpers ---------- */
+    const PLACEHOLDER_IMG = 'images/placeholder.png';
     const overlay = document.getElementById('gallery-modal');
     const overlayImg = document.getElementById('overlay-img');
     const overlayTitle = document.getElementById('overlay-title');
     const overlayLabel = document.getElementById('overlay-label');
 
     function showOverlay(item) {
-      overlayImg.src = item.img || 'images/placeholder.png';
+      overlayImg.src = item.img || PLACEHOLDER_IMG;
       overlayImg.alt = item.title || 'Preview';
       overlayTitle.textContent = item.title || '';
       overlayLabel.textContent = item.label || '';
@@ -123,17 +124,19 @@
 
     /* ---------- Card creation ---------- */
     function createGalleryCard(item) {
+      const PLACEHOLDER_IMG = 'images/placeholder.png';
+      
       const card = document.createElement('div');
       card.className = 'product';
       card.dataset.category = item.category || '';
       card.dataset.subcategory = item.subcategory || '';
       card.dataset.title = item.title || '';
 
-      const imgSrc = item.img || 'images/placeholder.png';
+      const imgSrc = item.img || PLACEHOLDER_IMG;
 
       card.innerHTML = `
         <div class="gallery-img-wrap">
-          <img src="${imgSrc}" alt="${item.title || 'Gallery Item'}" onerror="this.src='images/placeholder.png'">
+          <img src="${imgSrc}" alt="${item.title || 'Gallery Item'}" onerror="this.src='${PLACEHOLDER_IMG}'">
         </div>
         <div class="product-title">${item.title || ''}</div>
         <div class="product-price">${item.label || ''}</div>
