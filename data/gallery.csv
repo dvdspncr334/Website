@@ -1,14 +1,14 @@
-title,img,category,label
-Telecaster – Blank,images/Telecaster_white_blank.png,telecaster,Render
-Telecaster – Hexagon,images/Telecaster_white_hexagon.png,telecaster,Render
-Telecaster – Spider Web,images/Telecaster_white_spiderweb.png,telecaster,Render
-Telecaster – Cannabis,images/Telecaster_white_cannabis.png,telecaster,Render
-Stratocaster – Blank,images/Stratocaster_white_blank.png,stratocaster,Render
-Stratocaster – Hexagon,images/Stratocaster_white_hexagon.png,stratocaster,Render
-Stratocaster – Spider Web,images/Stratocaster_white_spiderweb.png,stratocaster,Render
-Stratocaster – Cannabis,images/Stratocaster_white_cannabis.png,stratocaster,Render
-Stratocaster – Flower Of Life,images/Stratocaster_white_floweroflife.png,stratocaster,Render
-Stratocaster – Hollow,images/Stratocaster_white_hollow.png,stratocaster,Render
-Stratocaster – Spiraling Gyroid,images/Stratocaster_white_spiralinggyroid.png,stratocaster,Render
-Jazzmaster – Satin Black,images/gallery-jazz-1.jpg,jazzmaster,Render
-Offset Concept – Copper,images/gallery-other-1.jpg,other,Render
+title,img,category,label,subcategory,handedness
+Telecaster – Blank,images/Telecaster_white_blank.png,telecaster,Render,classic,both
+Telecaster – Hexagon,images/Telecaster_white_hexagon.png,telecaster,Render,classic,both
+Telecaster – Spider Web,images/Telecaster_white_spiderweb.png,telecaster,Render,classic,both
+Telecaster – Cannabis,images/Telecaster_white_cannabis.png,telecaster,Render,modern,both
+Stratocaster – Blank,images/Stratocaster_white_blank.png,stratocaster,Render,standard-sss,both
+Stratocaster – Hexagon,images/Stratocaster_white_hexagon.png,stratocaster,Render,standard-sss,both
+Stratocaster – Spider Web,images/Stratocaster_white_spiderweb.png,stratocaster,Render,standard-hss,both
+Stratocaster – Cannabis,images/Stratocaster_white_cannabis.png,stratocaster,Render,standard-sss,both
+Stratocaster – Flower Of Life,images/Stratocaster_white_floweroflife.png,stratocaster,Render,standard-sss,both
+Stratocaster – Hollow,images/Stratocaster_white_hollow.png,stratocaster,Render,hollow,left
+Stratocaster – Spiraling Gyroid,images/Stratocaster_white_spiralinggyroid.png,stratocaster,Render,standard-sss,both
+Jazzmaster – Concept,images/Stratocaster_white_blank.png,jazzmaster,Concept,classic,both
+Offset Concept,images/Stratocaster_white_blank.png,other,Concept,offset,both

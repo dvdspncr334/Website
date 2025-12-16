@@ -268,6 +268,88 @@ footer a:hover {
   background: #d35400;
 }
 
+/* Search and Sort Controls */
+.search-sort-controls {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.search-box, .sort-select, .subcategory-select {
+  padding: 10px 12px;
+  background: #333;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 6px;
+  font-size: 0.95em;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-box {
+  flex: 1;
+  min-width: 200px;
+}
+
+.search-box:focus, .sort-select:focus, .subcategory-select:focus {
+  border-color: #e67e22;
+}
+
+.sort-select, .subcategory-select {
+  background: #333;
+  cursor: pointer;
+  min-width: 150px;
+}
+
+.sort-select option, .subcategory-select option {
+  background: #333;
+  color: #fff;
+}
+
+/* Product Options */
+.product-options {
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.option-label {
+  font-size: 0.85em;
+  color: #ddd;
+  font-weight: bold;
+}
+
+.option-select {
+  padding: 6px 8px;
+  background: #444;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 4px;
+  font-size: 0.9em;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.option-select:focus {
+  border-color: #e67e22;
+}
+
+.option-select option {
+  background: #444;
+  color: #fff;
+}
+
 /* Divider Line */
 .divider {
   width: 2px;
@@ -301,7 +383,7 @@ footer a:hover {
   text-align: center;
   border: 1px solid #444;
   width: 280px;
-  display: none; /* Hidden by default for filtering */
+  display: block;
 }
 
 .product img {
