@@ -19,6 +19,15 @@
     </div>
   </header>
 
+  <!-- Hover overlay for enlarged preview -->
+  <div id="gallery-overlay" class="gallery-overlay" aria-hidden="true">
+    <div class="gallery-overlay-content">
+      <img id="overlay-img" alt="">
+      <div class="gallery-overlay-title" id="overlay-title"></div>
+      <div class="gallery-overlay-label" id="overlay-label"></div>
+    </div>
+  </div>
+
   <!-- Main Gallery Content -->
   <div class="container">
     <!-- Sidebar with filters -->
@@ -66,6 +75,29 @@
       return rows;
     }
 
+    /* ---------- Overlay helpers ---------- */
+    const overlay = document.getElementById('gallery-overlay');
+    const overlayImg = document.getElementById('overlay-img');
+    const overlayTitle = document.getElementById('overlay-title');
+    const overlayLabel = document.getElementById('overlay-label');
+
+    function showOverlay(item) {
+      overlayImg.src = item.img || '';
+      overlayImg.alt = item.title || 'Preview';
+      overlayTitle.textContent = item.title || '';
+      overlayLabel.textContent = item.label || '';
+      overlay.classList.add('show');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+
+    function hideOverlay() {
+      overlay.classList.remove('show');
+      overlay.setAttribute('aria-hidden', 'true');
+    }
+
+    overlay.addEventListener('mouseenter', () => hideOverlay());
+    overlay.addEventListener('click', () => hideOverlay());
+
     function createGalleryCard(item) {
       const card = document.createElement('div');
       card.className = 'product';
@@ -73,19 +105,22 @@
       card.style.display = 'block';
 
       card.innerHTML = `
-        <img src="${item.img || ''}" alt="${item.title || 'Gallery Item'}">
+        <div class="gallery-img-wrap">
+          <img src="${item.img || ''}" alt="${item.title || 'Gallery Item'}">
+        </div>
         <div class="product-title">${item.title || ''}</div>
         <div class="product-price">${item.label || ''}</div>
       `;
+
+      card.addEventListener('mouseenter', () => showOverlay(item));
+      card.addEventListener('mouseleave', () => hideOverlay());
 
       return card;
     }
 
     async function loadGallery() {
       try {
-        const response = await fetch('data/gallery.csv?t=' + Date.now(), {
-          cache: 'no-store'
-        });
+        const response = await fetch('data/gallery.csv?t=' + Date.now(), { cache: 'no-store' });
         if (!response.ok) throw new Error('Failed to load gallery.csv');
         const text = await response.text();
         const items = parseCSV(text);
