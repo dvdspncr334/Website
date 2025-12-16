@@ -19,9 +19,10 @@
     </div>
   </header>
 
-  <!-- Hover overlay for enlarged preview -->
-  <div id="gallery-overlay" class="gallery-overlay" aria-hidden="true">
+  <!-- Click overlay for enlarged preview -->
+  <div id="gallery-modal" class="gallery-overlay" aria-hidden="true">
     <div class="gallery-overlay-content">
+      <button class="gallery-overlay-close" aria-label="Close preview">×</button>
       <img id="overlay-img" alt="">
       <div class="gallery-overlay-title" id="overlay-title"></div>
       <div class="gallery-overlay-label" id="overlay-label"></div>
@@ -30,7 +31,6 @@
 
   <!-- Main Gallery Content -->
   <div class="container">
-    <!-- Sidebar with filters -->
     <div class="sidebar">
       <h3>Categories</h3>
       <div class="categories">
@@ -42,10 +42,8 @@
       </div>
     </div>
 
-    <!-- Divider Line -->
     <div class="divider"></div>
 
-    <!-- Gallery container -->
     <div class="products-container">
       <h2>Gallery</h2>
       <div class="products"></div>
@@ -53,12 +51,12 @@
   </div>
 
   <script>
-    /* ---------- CSV Parsing and Loading ---------- */
+    /* ---------- CSV Parsing ---------- */
     let sortedProducts = [];
     const productsContainer = document.querySelector('.products');
 
     function parseCSV(text) {
-      const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+      const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
       if (lines.length < 2) return [];
       const headers = lines[0].split(',').map(h => h.trim());
       const rows = [];
@@ -75,11 +73,12 @@
       return rows;
     }
 
-    /* ---------- Overlay helpers ---------- */
-    const overlay = document.getElementById('gallery-overlay');
+    /* ---------- Modal helpers ---------- */
+    const overlay = document.getElementById('gallery-modal');
     const overlayImg = document.getElementById('overlay-img');
     const overlayTitle = document.getElementById('overlay-title');
     const overlayLabel = document.getElementById('overlay-label');
+    const overlayClose = document.querySelector('.gallery-overlay-close');
 
     function showOverlay(item) {
       overlayImg.src = item.img || '';
@@ -95,9 +94,13 @@
       overlay.setAttribute('aria-hidden', 'true');
     }
 
-    overlay.addEventListener('mouseenter', () => hideOverlay());
-    overlay.addEventListener('click', () => hideOverlay());
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay || e.target.classList.contains('gallery-overlay-close')) {
+        hideOverlay();
+      }
+    });
 
+    /* ---------- Card creation ---------- */
     function createGalleryCard(item) {
       const card = document.createElement('div');
       card.className = 'product';
@@ -112,9 +115,7 @@
         <div class="product-price">${item.label || ''}</div>
       `;
 
-      card.addEventListener('mouseenter', () => showOverlay(item));
-      card.addEventListener('mouseleave', () => hideOverlay());
-
+      card.addEventListener('click', () => showOverlay(item));
       return card;
     }
 
@@ -161,7 +162,7 @@
       renderGallery(category);
     }
 
-    /* ---------- Sorting for categories ---------- */
+    /* ---------- Sort category buttons ---------- */
     const categoriesContainer = document.querySelector('.categories');
     const categoryButtons = Array.from(categoriesContainer.querySelectorAll('button'));
     const [allButton, ...otherButtons] = categoryButtons;
