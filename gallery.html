@@ -33,12 +33,14 @@
   <div class="container">
     <div class="sidebar">
       <h3>Categories</h3>
-      <div class="categories">
-        <button onclick="filterGallery('all')">All</button>
-        <button onclick="filterGallery('telecaster')">Telecaster</button>
-        <button onclick="filterGallery('stratocaster')">Stratocaster</button>
-        <button onclick="filterGallery('jazzmaster')">Jazzmaster</button>
-        <button onclick="filterGallery('other')">Other</button>
+      <div class="categories" id="categories-container">
+        <!-- Auto-generated from CSV -->
+      </div>
+      <h3 style="margin-top: 20px;">Subcategories</h3>
+      <div id="subcategory-container">
+        <select class="subcategory-select" id="subcategory-filter">
+          <option value="all">All Subcategories</option>
+        </select>
       </div>
     </div>
 
@@ -46,15 +48,35 @@
 
     <div class="products-container">
       <h2>Gallery</h2>
-      <div class="products"></div>
+      <div class="search-sort-controls">
+        <input type="text" class="search-box" id="search-box" placeholder="Search gallery..." />
+        <select class="sort-select" id="sort-select">
+          <option value="default">Sort: Default</option>
+          <option value="title-asc">Sort: Title A→Z</option>
+        </select>
+      </div>
+      <div class="products" id="products-container"></div>
     </div>
   </div>
 
   <script>
-    /* ---------- CSV Parsing ---------- */
-    let sortedProducts = [];
-    const productsContainer = document.querySelector('.products');
+    /* ---------- State and Constants ---------- */
+    const CATEGORY_KEY = 'jgv3d_gallery_category';
+    const SUBCATEGORY_KEY = 'jgv3d_gallery_subcategory';
+    
+    let allItems = [];
+    let currentCategory = localStorage.getItem(CATEGORY_KEY) || 'all';
+    let currentSubcategory = localStorage.getItem(SUBCATEGORY_KEY) || 'all';
+    let currentSort = 'default';
+    let searchQuery = '';
 
+    const productsContainer = document.getElementById('products-container');
+    const categoriesContainer = document.getElementById('categories-container');
+    const subcategoryFilter = document.getElementById('subcategory-filter');
+    const searchBox = document.getElementById('search-box');
+    const sortSelect = document.getElementById('sort-select');
+
+    /* ---------- CSV Parsing ---------- */
     function parseCSV(text) {
       const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
       if (lines.length < 2) return [];
@@ -78,10 +100,9 @@
     const overlayImg = document.getElementById('overlay-img');
     const overlayTitle = document.getElementById('overlay-title');
     const overlayLabel = document.getElementById('overlay-label');
-    const overlayClose = document.querySelector('.gallery-overlay-close');
 
     function showOverlay(item) {
-      overlayImg.src = item.img || '';
+      overlayImg.src = item.img || 'images/placeholder.png';
       overlayImg.alt = item.title || 'Preview';
       overlayTitle.textContent = item.title || '';
       overlayLabel.textContent = item.label || '';
@@ -105,11 +126,14 @@
       const card = document.createElement('div');
       card.className = 'product';
       card.dataset.category = item.category || '';
-      card.style.display = 'block';
+      card.dataset.subcategory = item.subcategory || '';
+      card.dataset.title = item.title || '';
+
+      const imgSrc = item.img || 'images/placeholder.png';
 
       card.innerHTML = `
         <div class="gallery-img-wrap">
-          <img src="${item.img || ''}" alt="${item.title || 'Gallery Item'}">
+          <img src="${imgSrc}" alt="${item.title || 'Gallery Item'}" onerror="this.src='images/placeholder.png'">
         </div>
         <div class="product-title">${item.title || ''}</div>
         <div class="product-price">${item.label || ''}</div>
@@ -119,61 +143,170 @@
       return card;
     }
 
+    /* ---------- Load Gallery ---------- */
     async function loadGallery() {
       try {
         const response = await fetch('data/gallery.csv?t=' + Date.now(), { cache: 'no-store' });
         if (!response.ok) throw new Error('Failed to load gallery.csv');
         const text = await response.text();
-        const items = parseCSV(text);
+        allItems = parseCSV(text);
 
-        if (items.length === 0) {
+        if (allItems.length === 0) {
           productsContainer.innerHTML = '<p style="color:#ddd;">No gallery items available.</p>';
           return;
         }
 
-        const galleryCards = items.map(createGalleryCard);
-        sortedProducts = galleryCards.sort((a, b) => {
-          const catA = (a.dataset.category || '').toLowerCase();
-          const catB = (b.dataset.category || '').toLowerCase();
-          const titleA = (a.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
-          const titleB = (b.querySelector('.product-title')?.textContent || '').trim().toLowerCase();
-          return catA.localeCompare(catB) || titleA.localeCompare(titleB);
-        });
-
-        renderGallery('all');
+        generateCategoryButtons();
+        updateSubcategoryFilter();
+        renderGallery();
       } catch (error) {
         console.error('Error loading gallery:', error);
         productsContainer.innerHTML = '<p style="color:#ddd;">Failed to load gallery items. Please try again later.</p>';
       }
     }
 
-    function renderGallery(category = 'all') {
-      productsContainer.innerHTML = '';
-      sortedProducts.forEach(card => {
-        const match = category === 'all' || card.dataset.category === category;
-        if (match) {
-          card.style.display = 'block';
-          productsContainer.appendChild(card);
-        }
+    /* ---------- Generate Category Buttons ---------- */
+    function generateCategoryButtons() {
+      const categories = new Set();
+      allItems.forEach(item => {
+        if (item.category) categories.add(item.category);
+      });
+
+      const sortedCategories = Array.from(categories).sort();
+      
+      categoriesContainer.innerHTML = '';
+      
+      // Add "All" button
+      const allBtn = document.createElement('button');
+      allBtn.textContent = 'All';
+      allBtn.onclick = () => filterByCategory('all');
+      categoriesContainer.appendChild(allBtn);
+
+      // Add category buttons
+      sortedCategories.forEach(cat => {
+        const btn = document.createElement('button');
+        btn.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
+        btn.onclick = () => filterByCategory(cat);
+        categoriesContainer.appendChild(btn);
       });
     }
 
-    function filterGallery(category) {
-      renderGallery(category);
+    /* ---------- Update Subcategory Filter ---------- */
+    function updateSubcategoryFilter() {
+      const subcategories = new Set();
+      allItems.forEach(item => {
+        if (currentCategory === 'all' || item.category === currentCategory) {
+          if (item.subcategory) subcategories.add(item.subcategory);
+        }
+      });
+
+      const sortedSubcategories = Array.from(subcategories).sort();
+      
+      subcategoryFilter.innerHTML = '<option value="all">All Subcategories</option>';
+      sortedSubcategories.forEach(sub => {
+        const option = document.createElement('option');
+        option.value = sub;
+        option.textContent = sub.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        subcategoryFilter.appendChild(option);
+      });
+
+      subcategoryFilter.value = currentSubcategory;
     }
 
-    /* ---------- Sort category buttons ---------- */
-    const categoriesContainer = document.querySelector('.categories');
-    const categoryButtons = Array.from(categoriesContainer.querySelectorAll('button'));
-    const [allButton, ...otherButtons] = categoryButtons;
-    otherButtons.sort((a, b) =>
-      a.textContent.trim().localeCompare(b.textContent.trim(), undefined, { sensitivity: 'base' })
-    );
-    categoriesContainer.innerHTML = '';
-    categoriesContainer.appendChild(allButton);
-    otherButtons.forEach(btn => categoriesContainer.appendChild(btn));
+    /* ---------- Filter and Render ---------- */
+    function filterByCategory(category) {
+      currentCategory = category;
+      currentSubcategory = 'all';
+      localStorage.setItem(CATEGORY_KEY, category);
+      localStorage.setItem(SUBCATEGORY_KEY, 'all');
+      updateSubcategoryFilter();
+      renderGallery();
+    }
 
-    // Load gallery items from CSV on page load
+    function filterBySubcategory() {
+      currentSubcategory = subcategoryFilter.value;
+      localStorage.setItem(SUBCATEGORY_KEY, currentSubcategory);
+      renderGallery();
+    }
+
+    function applySearch() {
+      searchQuery = searchBox.value.toLowerCase();
+      renderGallery();
+    }
+
+    function applySort() {
+      currentSort = sortSelect.value;
+      renderGallery();
+    }
+
+    function matchesFilters(item) {
+      // Category filter
+      if (currentCategory !== 'all' && item.category !== currentCategory) {
+        return false;
+      }
+
+      // Subcategory filter
+      if (currentSubcategory !== 'all' && item.subcategory !== currentSubcategory) {
+        return false;
+      }
+
+      // Search filter
+      if (searchQuery) {
+        const searchText = [
+          item.title,
+          item.category,
+          item.subcategory,
+          item.label
+        ].join(' ').toLowerCase();
+        
+        if (!searchText.includes(searchQuery)) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    function renderGallery() {
+      const filtered = allItems.filter(matchesFilters);
+
+      // Sort items
+      let sorted = [...filtered];
+      if (currentSort === 'title-asc') {
+        sorted.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      } else {
+        // Default: category then title
+        sorted.sort((a, b) => {
+          const catCmp = (a.category || '').localeCompare(b.category || '');
+          return catCmp !== 0 ? catCmp : (a.title || '').localeCompare(b.title || '');
+        });
+      }
+
+      productsContainer.innerHTML = '';
+      
+      if (sorted.length === 0) {
+        productsContainer.innerHTML = '<p style="color:#ddd;">No gallery items match your filters.</p>';
+        return;
+      }
+
+      sorted.forEach(item => {
+        const card = createGalleryCard(item);
+        productsContainer.appendChild(card);
+      });
+    }
+
+    /* ---------- Event Listeners ---------- */
+    subcategoryFilter.addEventListener('change', filterBySubcategory);
+    
+    let searchDebounce;
+    searchBox.addEventListener('input', () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(applySearch, 300);
+    });
+
+    sortSelect.addEventListener('change', applySort);
+
+    /* ---------- Initialize ---------- */
     loadGallery();
   </script>
 </body>
