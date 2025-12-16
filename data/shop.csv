@@ -1,4 +1,9 @@
-id,title,price,img,category
-telecaster-ash-body,Telecaster Ash Body,179.99,images/telecaster1.jpg,telecaster
-stratocaster-walnut-body,Stratocaster Walnut Body,210.99,images/stratocaster1.jpg,stratocaster
-jazzmaster-alder-body,Jazzmaster Alder Body,199.99,images/jazzmaster1.jpg,jazzmaster
+id,title,price,img,category,subcategory,handedness,colors,custom_color_fee,pickup_configs,description
+tele-ash-1,Telecaster Ash Body,179.99,images/telecaster1.jpg,telecaster,classic,both,Black|White|Sunburst|Natural,25,,Premium ash body
+strat-walnut-1,Stratocaster Walnut Body,210.99,images/stratocaster1.jpg,stratocaster,standard-sss,both,Black|White|Sunburst,25,SSS,Beautiful walnut body
+jazz-alder-1,Jazzmaster Alder Body,199.99,images/jazzmaster1.jpg,jazzmaster,classic,both,Black|White|Sunburst,25,,Classic Jazzmaster body
+strat-hss-1,Stratocaster HSS Body,215.99,images/Stratocaster_white_blank.png,stratocaster,standard-hss,both,Black|White|Red|Sunburst,30,HSS,Versatile HSS configuration
+strat-sss-1,Stratocaster SSS Body,205.99,images/Stratocaster_white_hexagon.png,stratocaster,standard-sss,right,Black|White|Sunburst,25,SSS,Classic SSS layout
+tele-modern-1,Modern Telecaster Body,189.99,images/Telecaster_white_blank.png,telecaster,modern,both,Black|White|Blue|Red,30,,Modern Telecaster body
+strat-hollow-1,Hollow Stratocaster Body,245.99,images/Stratocaster_white_hollow.png,stratocaster,hollow,left,Black|Natural,35,,Lightweight hollow design
+jazz-offset-1,Jazzmaster Offset Body,219.99,images/jazzmaster1.jpg,jazzmaster,offset,both,Black|White|Sunburst,25,,Unique offset shape
