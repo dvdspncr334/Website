@@ -13,7 +13,10 @@
       <a href="index.html">Home</a>
       <a href="shop.html">Shop</a>
       <a href="about.html">About Us</a>
-      <a href="cart.html">Cart</a>
+      <a href="cart.html" class="mini-cart" id="mini-cart">
+        Cart
+        <span class="mini-cart-count" id="mini-cart-count">0</span>
+      </a>
       <a href="usefullinks.html">Useful Links</a>
       <a href="login.html">Login</a>
     </div>
@@ -310,7 +313,20 @@
     sortSelect.addEventListener('change', applySort);
 
     /* ---------- Initialize ---------- */
+    function updateMiniCart() {
+      try {
+        const cart = JSON.parse(localStorage.getItem('jgv3d_cart')) || [];
+        const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+        const miniCartCount = document.getElementById('mini-cart-count');
+        if (miniCartCount) {
+          miniCartCount.textContent = totalItems;
+          miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
+        }
+      } catch (e) {}
+    }
+
     loadGallery();
+    updateMiniCart();
   </script>
 </body>
 </html>

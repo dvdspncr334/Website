@@ -12,7 +12,10 @@
     <div class="header-buttons">
       <a href="index.html">Home</a>
       <a href="shop.html">Shop</a>
-      <a href="cart.html">Cart</a>
+      <a href="cart.html" class="mini-cart" id="mini-cart">
+        Cart
+        <span class="mini-cart-count" id="mini-cart-count">0</span>
+      </a>
     </div>
   </header>
 
@@ -48,6 +51,22 @@
       </a>
     </div>
   </div>
+
+  <script>
+    // Update mini-cart count
+    function updateMiniCart() {
+      try {
+        const cart = JSON.parse(localStorage.getItem('jgv3d_cart')) || [];
+        const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+        const miniCartCount = document.getElementById('mini-cart-count');
+        if (miniCartCount) {
+          miniCartCount.textContent = totalItems;
+          miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
+        }
+      } catch (e) {}
+    }
+    updateMiniCart();
+  </script>
 </body>
 
 </html>
