@@ -10,7 +10,11 @@
   <header class="header">
     <h1>About Us</h1>
     <div class="header-buttons">
-      <a href="index.html">Home</a> <!-- Button to go back home -->
+      <a href="index.html">Home</a>
+      <a href="cart.html" class="mini-cart" id="mini-cart">
+        Cart
+        <span class="mini-cart-count" id="mini-cart-count">0</span>
+      </a>
     </div>
   </header>
 
@@ -33,5 +37,21 @@
       Our expert team is always ready to help you design and build the guitar body of your dreams.
     </p>
   </div>
+
+  <script>
+    // Update mini-cart count
+    function updateMiniCart() {
+      try {
+        const cart = JSON.parse(localStorage.getItem('jgv3d_cart')) || [];
+        const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+        const miniCartCount = document.getElementById('mini-cart-count');
+        if (miniCartCount) {
+          miniCartCount.textContent = totalItems;
+          miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
+        }
+      } catch (e) {}
+    }
+    updateMiniCart();
+  </script>
 </body>
 </html>
