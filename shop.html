@@ -294,8 +294,10 @@
           const selectedColor = colorSelect.value;
           if (selectedColor !== 'custom' && colorImageMap[selectedColor]) {
             productImg.src = colorImageMap[selectedColor];
+            productImg.onerror = () => { productImg.src = 'images/placeholder.png'; };
           } else if (item.img) {
             productImg.src = item.img;
+            productImg.onerror = () => { productImg.src = 'images/placeholder.png'; };
           }
         });
       }
