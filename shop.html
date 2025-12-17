@@ -11,7 +11,10 @@
     <h1>JGV3D Guitar Bodies</h1>
     <div class="header-buttons">
       <a href="index.html">Home</a>
-      <a href="cart.html">Cart</a>
+      <a href="cart.html" class="mini-cart" id="mini-cart">
+        Cart
+        <span class="mini-cart-count" id="mini-cart-count">0</span>
+      </a>
     </div>
   </header>
 
@@ -104,10 +107,41 @@
       card.dataset.colors = item.colors || '';
       card.dataset.pickupConfigs = item.pickup_configs || '';
       card.dataset.customColorFee = item.custom_color_fee || '0';
+      card.dataset.colorImages = item.color_images || '';
+      card.dataset.discount = item.discount || '0';
 
       const price = parseFloat(item.price);
-      const priceDisplay = isNaN(price) ? 'Contact for price' : `$${price.toFixed(2)}`;
+      const discount = parseFloat(item.discount || '0');
+      const hasDiscount = discount > 0 && !isNaN(discount);
+      const salePrice = hasDiscount ? price * (1 - discount / 100) : price;
+      
+      let priceHTML = '';
+      if (hasDiscount) {
+        priceHTML = `
+          <div class="price-container">
+            <span class="original-price">$${price.toFixed(2)}</span>
+            <span class="sale-price">$${salePrice.toFixed(2)}</span>
+          </div>
+        `;
+      } else {
+        priceHTML = `<div class="product-price">${isNaN(price) ? 'Contact for price' : `$${price.toFixed(2)}`}</div>`;
+      }
+
       const imgSrc = item.img || PLACEHOLDER_IMG;
+
+      // Build badges
+      let badgesHTML = '';
+      const badges = [];
+      if (item.tag && item.tag.trim()) {
+        const tagClass = item.tag.toLowerCase().replace(/\s+/g, '-');
+        badges.push(`<span class="product-badge badge-${tagClass}">${item.tag}</span>`);
+      }
+      if (item.status && item.status.trim()) {
+        badges.push(`<span class="product-badge badge-${item.status}">${item.status.replace(/-/g, ' ')}</span>`);
+      }
+      if (badges.length > 0) {
+        badgesHTML = `<div class="product-badges">${badges.join('')}</div>`;
+      }
 
       // Parse options
       const handednessOptions = (item.handedness || '').split('|').filter(h => h);
@@ -166,10 +200,26 @@
         `;
       }
 
+      // Build related items
+      const relatedItems = getRelatedItems(item);
+      let relatedHTML = '';
+      if (relatedItems.length > 0) {
+        const relatedLinks = relatedItems.map(r => 
+          `<a class="related-item-link" data-target-id="${r.id}">${r.title}</a>`
+        ).join('');
+        relatedHTML = `
+          <div class="related-items">
+            <div class="related-items-title">Related Items:</div>
+            <div class="related-items-list">${relatedLinks}</div>
+          </div>
+        `;
+      }
+
       card.innerHTML = `
-        <img src="${imgSrc}" alt="${item.title || 'Product'}" onerror="this.src='${PLACEHOLDER_IMG}'">
+        <img src="${imgSrc}" alt="${item.title || 'Product'}" onerror="this.src='${PLACEHOLDER_IMG}'" class="product-img">
         <div class="product-title">${item.title || ''}</div>
-        <div class="product-price">${priceDisplay}</div>
+        ${badgesHTML}
+        ${priceHTML}
         ${optionsHTML ? `<div class="product-options">${optionsHTML}</div>` : ''}
         <div class="qty-control">
           <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
@@ -177,10 +227,32 @@
           <button class="qty-btn plus" aria-label="Increase quantity">+</button>
         </div>
         <button class="add-btn">Add to Cart</button>
+        ${relatedHTML}
       `;
 
       wireProductCard(card, item);
       return card;
+    }
+
+    /* ---------- Get Related Items ---------- */
+    function getRelatedItems(item) {
+      if (!item.id) return [];
+      
+      const related = allProducts.filter(p => {
+        if (p.id === item.id) return false;
+        if (p.category === item.category && p.subcategory === item.subcategory) return true;
+        if (p.category === item.category) return true;
+        return false;
+      });
+      
+      // Prioritize same subcategory, then same category
+      related.sort((a, b) => {
+        const aSubMatch = a.subcategory === item.subcategory ? 1 : 0;
+        const bSubMatch = b.subcategory === item.subcategory ? 1 : 0;
+        return bSubMatch - aSubMatch;
+      });
+      
+      return related.slice(0, 3);
     }
 
     /* ---------- Wire Product Card Events ---------- */
@@ -189,6 +261,8 @@
       const plus = card.querySelector('.qty-btn.plus');
       const display = card.querySelector('.qty-value');
       const addBtn = card.querySelector('.add-btn');
+      const colorSelect = card.querySelector('.color-select');
+      const productImg = card.querySelector('.product-img');
 
       if (minus && plus && display) {
         minus.addEventListener('click', () => {
@@ -204,6 +278,44 @@
       if (addBtn) {
         addBtn.addEventListener('click', () => addToCart(card, item));
       }
+
+      // Color image swapping
+      if (colorSelect && productImg && item.color_images) {
+        const colorImageMap = {};
+        const pairs = item.color_images.split('|');
+        pairs.forEach(pair => {
+          const [color, imgPath] = pair.split(':');
+          if (color && imgPath) {
+            colorImageMap[color.trim()] = imgPath.trim();
+          }
+        });
+
+        colorSelect.addEventListener('change', () => {
+          const selectedColor = colorSelect.value;
+          if (selectedColor !== 'custom' && colorImageMap[selectedColor]) {
+            productImg.src = colorImageMap[selectedColor];
+          } else if (item.img) {
+            productImg.src = item.img;
+          }
+        });
+      }
+
+      // Related items navigation
+      const relatedLinks = card.querySelectorAll('.related-item-link');
+      relatedLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const targetId = link.dataset.targetId;
+          const targetCard = document.querySelector(`.product[data-id="${targetId}"]`);
+          if (targetCard) {
+            targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            targetCard.style.outline = '2px solid #e67e22';
+            setTimeout(() => {
+              targetCard.style.outline = '';
+            }, 2000);
+          }
+        });
+      });
     }
 
     /* ---------- Load Products from CSV ---------- */
@@ -412,6 +524,7 @@
       const id = item.id;
       const baseTitle = item.title || 'Item';
       const basePrice = parseFloat(item.price || 0);
+      const discount = parseFloat(item.discount || 0);
       const img = item.img || 'images/placeholder.png';
       const qty = parseInt(card.querySelector('.qty-value')?.textContent || '1', 10);
 
@@ -422,10 +535,17 @@
       const optionsStr = options.length > 0 ? ` (${options.join(', ')})` : '';
       const title = baseTitle + optionsStr;
 
-      // Calculate price with custom color fee
+      // Calculate price with discount and custom color fee
       const colorSelect = card.querySelector('.color-select');
       const customColorFee = parseFloat(item.custom_color_fee || 0);
       let price = basePrice;
+      
+      // Apply discount first
+      if (discount > 0 && !isNaN(discount)) {
+        price = price * (1 - discount / 100);
+      }
+      
+      // Then add custom color fee if applicable
       if (colorSelect && colorSelect.value === 'custom' && customColorFee > 0) {
         price += customColorFee;
       }
@@ -441,6 +561,7 @@
         cart.push({ id: cartId, title, price, img, qty });
       }
       saveCart(cart);
+      updateMiniCart();
 
       // Reset qty to 1 and show toast
       const qtyEl = card.querySelector('.qty-value');
@@ -460,7 +581,18 @@
     sortSelect.addEventListener('change', applySort);
 
     /* ---------- Initialize ---------- */
+    function updateMiniCart() {
+      const cart = loadCart();
+      const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+      const miniCartCount = document.getElementById('mini-cart-count');
+      if (miniCartCount) {
+        miniCartCount.textContent = totalItems;
+        miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
+      }
+    }
+
     loadProducts();
+    updateMiniCart();
   </script>
 </body>
 </html>
