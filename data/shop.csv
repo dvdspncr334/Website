@@ -1,4 +1,4 @@
-,title,price,img,category,subcategory,handedness,colors,custom_color_fee,pickup_configs,description,color_images,status,tag,discount
+id,title,price,img,category,subcategory,handedness,colors,custom_color_fee,pickup_configs,description,color_images,status,tag,discount
 tele-ash-1,Telecaster Ash Body,179.99,images/telecaster1.jpg,telecaster,classic,both,Black|White|Sunburst|Natural,25,,Premium ash body,,,New,
 strat-walnut-1,Stratocaster Walnut Body,210.99,images/stratocaster1.jpg,stratocaster,standard-sss,both,Black|White|Sunburst,25,SSS,Beautiful walnut body,Black:images/Stratocaster_white_blank.png|White:images/Stratocaster_white_hexagon.png,in-stock,On Sale,15
 jazz-alder-1,Jazzmaster Alder Body,199.99,images/jazzmaster1.jpg,jazzmaster,classic,both,Black|White|Sunburst,25,,Classic Jazzmaster body,,,New,10
@@ -39,4 +39,5 @@ jag-ss-spiralhyroid,Jaguar Spiral Gyroid Body,199.99,,jaguar,classic,both,Black|
 jag-ss-cts,Jaguar Circles Triangles Squares Body,199.99,,jaguar,classic,both,Black|White|Red,30,SS,The classic standard flat tele,Black:images/Jaguar/Flat/SS/|White:images/Jaguar/Flat/SS/|Red:images/Jaguar/Flat/SS/,in-stock,,
 jag-ss-bubbles,Jaguar Bubbles Body,199.99,,jaguar,classic,both,Black|White|Red,30,SS,The classic standard flat tele,Black:images/Jaguar/Flat/SS/|White:images/Jaguar/Flat/SS/|Red:images/Jaguar/Flat/SS/,in-stock,,
 jag-ss-voronoi,Jaguar Voronoi Body,199.99,,jaguar,classic,both,Black|White|Red,30,SS,The classic standard flat tele,Black:images/Jaguar/Flat/SS/|White:images/Jaguar/Flat/SS/|Red:images/Jaguar/Flat/SS/,in-stock,,
+
 jag-ss-butterflywing,Jaguar Butterfly Wing Body,199.99,,jaguar,classic,both,Black|White|Red,30,SS,The classic standard flat tele,Black:images/Jaguar/Flat/SS/|White:images/Jaguar/Flat/SS/|Red:images/Jaguar/Flat/SS/,in-stock,,
