@@ -63,6 +63,7 @@
     const CART_KEY = 'jgv3d_cart';
     const CATEGORY_KEY = 'jgv3d_last_category';
     const SUBCATEGORY_KEY = 'jgv3d_last_subcategory';
+    const CUSTOM_NOTE_MAX_LENGTH = 160;
     
     let allProducts = [];
     let currentCategory = localStorage.getItem(CATEGORY_KEY) || 'all';
@@ -96,6 +97,25 @@
       return rows;
     }
 
+    function escapeHTML(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getDisplayPrice(item) {
+      const basePrice = parseFloat(item.price);
+      const discount = parseFloat(item.discount || '0');
+      if (isNaN(basePrice)) return NaN;
+      if (discount > 0 && !isNaN(discount)) {
+        return basePrice * (1 - discount / 100);
+      }
+      return basePrice;
+    }
+
     /* ---------- Product Card Creation ---------- */
     function createProductCard(item) {
       const PLACEHOLDER_IMG = 'images/placeholder.png';
@@ -114,21 +134,29 @@
       card.dataset.colorImages = item.color_images || '';
       card.dataset.discount = item.discount || '0';
 
-      const price = parseFloat(item.price);
+      const basePrice = parseFloat(item.price);
+      const displayPrice = getDisplayPrice(item);
       const discount = parseFloat(item.discount || '0');
-      const hasDiscount = discount > 0 && !isNaN(discount);
-      const salePrice = hasDiscount ? price * (1 - discount / 100) : price;
+      const hasDiscount = discount > 0 && !isNaN(discount) && !isNaN(basePrice);
+      const customColorFee = parseFloat(item.custom_color_fee || '0');
+      const hasCustomColorOption = customColorFee > 0;
       
       let priceHTML = '';
       if (hasDiscount) {
         priceHTML = `
           <div class="price-container">
-            <span class="original-price">$${price.toFixed(2)}</span>
-            <span class="sale-price">$${salePrice.toFixed(2)}</span>
+            <span class="original-price">$${basePrice.toFixed(2)}</span>
+            <span class="sale-price">$${displayPrice.toFixed(2)}</span>
           </div>
         `;
       } else {
-        priceHTML = `<div class="product-price">${isNaN(price) ? 'Contact for price' : `$${price.toFixed(2)}`}</div>`;
+        priceHTML = `<div class="product-price">${isNaN(displayPrice) ? 'Contact for price' : `$${displayPrice.toFixed(2)}`}</div>`;
+      }
+
+      if (hasCustomColorOption && !isNaN(displayPrice)) {
+        priceHTML += `
+          <div class="custom-fee-note">Custom color fee: +$${customColorFee.toFixed(2)}</div>
+        `;
       }
 
       const imgSrc = item.img || PLACEHOLDER_IMG;
@@ -150,8 +178,6 @@
       // Parse options
       const colorOptions = (item.colors || '').split('|').filter(c => c);
       const pickupOptions = (item.pickup_configs || '').split('|').filter(p => p);
-      const customColorFee = parseFloat(item.custom_color_fee || '0');
-      const hasCustomColorOption = customColorFee > 0;
 
       let optionsHTML = '';
       
@@ -208,7 +234,12 @@
         optionsHTML += `
           <div class="option-group custom-color-note-group" style="display:none;">
             <label class="option-label">Custom Color / Notes:</label>
-            <textarea class="option-select custom-color-note" rows="3" placeholder="Enter the custom color or any order notes..."></textarea>
+            <textarea class="option-select custom-color-note" rows="3" maxlength="${CUSTOM_NOTE_MAX_LENGTH}" placeholder="Enter the custom color or any order notes..."></textarea>
+            <div class="custom-color-help">Describe the color, finish, burst, sparkle, or other special requests.</div>
+            <div class="custom-color-meta">
+              <span class="custom-color-limit">Max ${CUSTOM_NOTE_MAX_LENGTH} characters</span>
+              <span class="custom-color-counter">0/${CUSTOM_NOTE_MAX_LENGTH}</span>
+            </div>
           </div>
         `;
       }
@@ -277,6 +308,7 @@
       const colorSelect = card.querySelector('.color-select');
       const customColorNoteGroup = card.querySelector('.custom-color-note-group');
       const customColorNote = card.querySelector('.custom-color-note');
+      const customColorCounter = card.querySelector('.custom-color-counter');
       const productImg = card.querySelector('.product-img');
 
       if (minus && plus && display) {
@@ -292,6 +324,14 @@
 
       if (addBtn) {
         addBtn.addEventListener('click', () => addToCart(card, item));
+      }
+
+      if (customColorNote && customColorCounter) {
+        const updateCounter = () => {
+          customColorCounter.textContent = `${customColorNote.value.length}/${CUSTOM_NOTE_MAX_LENGTH}`;
+        };
+        customColorNote.addEventListener('input', updateCounter);
+        updateCounter();
       }
 
       // Color image swapping + custom note toggle
@@ -317,6 +357,9 @@
 
           if (!isCustom && customColorNote) {
             customColorNote.value = '';
+            if (customColorCounter) {
+              customColorCounter.textContent = `0/${CUSTOM_NOTE_MAX_LENGTH}`;
+            }
           }
 
           if (productImg) {
@@ -580,6 +623,12 @@
         return;
       }
 
+      if (isCustomColor && customText.length > CUSTOM_NOTE_MAX_LENGTH) {
+        showToast(`Custom color notes must be ${CUSTOM_NOTE_MAX_LENGTH} characters or less`);
+        if (customColorNote) customColorNote.focus();
+        return;
+      }
+
       // Get selected options
       const options = getSelectedOptions(card);
       const optionsStr = options.length > 0 ? ` (${options.join(', ')})` : '';
@@ -615,7 +664,13 @@
       // Reset qty to 1 and show toast
       const qtyEl = card.querySelector('.qty-value');
       if (qtyEl) qtyEl.textContent = '1';
-      if (isCustomColor && customColorNote) customColorNote.value = '';
+      if (isCustomColor && customColorNote) {
+        customColorNote.value = '';
+        const customColorCounter = card.querySelector('.custom-color-counter');
+        if (customColorCounter) {
+          customColorCounter.textContent = `0/${CUSTOM_NOTE_MAX_LENGTH}`;
+        }
+      }
       showToast(`${qty} × ${title} added to cart`);
     }
 
