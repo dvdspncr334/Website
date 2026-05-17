@@ -53,6 +53,15 @@
       return `$${num.toFixed(2)}`;
     }
 
+    function escapeHTML(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function parseCartTitle(title) {
       const match = title.match(/^(.*?)\s*\(Custom Color:\s*(.*?)\)$/);
       if (match) {
@@ -91,15 +100,17 @@
         const subtotal = item.price * item.qty;
         total += subtotal;
         const parsedTitle = parseCartTitle(item.title || 'Item');
+        const safeBaseTitle = escapeHTML(parsedTitle.baseTitle || 'Item');
+        const safeCustomNote = escapeHTML(parsedTitle.customNote || '');
 
         const wrapper = document.createElement('div');
         wrapper.className = 'cart-item';
 
         wrapper.innerHTML = `
-          <img src="${item.img || ''}" alt="${parsedTitle.baseTitle || 'Item'}">
+          <img src="${item.img || ''}" alt="${safeBaseTitle}">
           <div class="cart-item-details">
-            <h4>${parsedTitle.baseTitle || 'Item'}</h4>
-            ${parsedTitle.customNote ? `<p class="cart-item-note"><strong>Custom Color / Notes:</strong> ${parsedTitle.customNote}</p>` : ''}
+            <h4>${safeBaseTitle}</h4>
+            ${safeCustomNote ? `<p class="cart-item-note"><strong>Custom Color / Notes:</strong> ${safeCustomNote}</p>` : ''}
             <div class="qty-control" style="justify-content:flex-start; gap:8px; margin-top:6px;">
               <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
               <span class="qty-value">${item.qty}</span>
