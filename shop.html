@@ -148,10 +148,10 @@
       }
 
       // Parse options
-      const handednessOptions = (item.handedness || '').split('|').filter(h => h);
       const colorOptions = (item.colors || '').split('|').filter(c => c);
       const pickupOptions = (item.pickup_configs || '').split('|').filter(p => p);
       const customColorFee = parseFloat(item.custom_color_fee || '0');
+      const hasCustomColorOption = customColorFee > 0;
 
       let optionsHTML = '';
       
@@ -191,15 +191,24 @@
         `;
       }
 
-      // Color selector
-      if (colorOptions.length > 0) {
+      // Color selector with predefined colors + optional custom color
+      if (colorOptions.length > 0 || hasCustomColorOption) {
         optionsHTML += `
           <div class="option-group">
             <label class="option-label">Color:</label>
             <select class="option-select color-select">
               ${colorOptions.map(c => `<option value="${c}">${c}</option>`).join('')}
-              ${customColorFee > 0 ? `<option value="custom">Custom Color (+$${customColorFee.toFixed(2)})</option>` : ''}
+              ${hasCustomColorOption ? `<option value="custom">Custom Color (+$${customColorFee.toFixed(2)})</option>` : ''}
             </select>
+          </div>
+        `;
+      }
+
+      if (hasCustomColorOption) {
+        optionsHTML += `
+          <div class="option-group custom-color-note-group" style="display:none;">
+            <label class="option-label">Custom Color / Notes:</label>
+            <textarea class="option-select custom-color-note" rows="3" placeholder="Enter the custom color or any order notes..."></textarea>
           </div>
         `;
       }
@@ -266,6 +275,8 @@
       const display = card.querySelector('.qty-value');
       const addBtn = card.querySelector('.add-btn');
       const colorSelect = card.querySelector('.color-select');
+      const customColorNoteGroup = card.querySelector('.custom-color-note-group');
+      const customColorNote = card.querySelector('.custom-color-note');
       const productImg = card.querySelector('.product-img');
 
       if (minus && plus && display) {
@@ -283,27 +294,44 @@
         addBtn.addEventListener('click', () => addToCart(card, item));
       }
 
-      // Color image swapping
-      if (colorSelect && productImg && item.color_images) {
+      // Color image swapping + custom note toggle
+      if (colorSelect) {
         const colorImageMap = {};
-        const pairs = item.color_images.split('|');
-        pairs.forEach(pair => {
-          const [color, imgPath] = pair.split(':');
-          if (color && imgPath) {
-            colorImageMap[color.trim()] = imgPath.trim();
-          }
-        });
+        if (item.color_images) {
+          const pairs = item.color_images.split('|');
+          pairs.forEach(pair => {
+            const [color, imgPath] = pair.split(':');
+            if (color && imgPath) {
+              colorImageMap[color.trim()] = imgPath.trim();
+            }
+          });
+        }
 
-        colorSelect.addEventListener('change', () => {
+        const syncCustomColorUI = () => {
           const selectedColor = colorSelect.value;
-          if (selectedColor !== 'custom' && colorImageMap[selectedColor]) {
-            productImg.src = colorImageMap[selectedColor];
-            productImg.onerror = () => { productImg.src = 'images/placeholder.png'; };
-          } else if (item.img) {
-            productImg.src = item.img;
-            productImg.onerror = () => { productImg.src = 'images/placeholder.png'; };
+          const isCustom = selectedColor === 'custom';
+
+          if (customColorNoteGroup) {
+            customColorNoteGroup.style.display = isCustom ? 'flex' : 'none';
           }
-        });
+
+          if (!isCustom && customColorNote) {
+            customColorNote.value = '';
+          }
+
+          if (productImg) {
+            if (!isCustom && colorImageMap[selectedColor]) {
+              productImg.src = colorImageMap[selectedColor];
+              productImg.onerror = () => { productImg.src = 'images/placeholder.png'; };
+            } else if (item.img) {
+              productImg.src = item.img;
+              productImg.onerror = () => { productImg.src = 'images/placeholder.png'; };
+            }
+          }
+        };
+
+        colorSelect.addEventListener('change', syncCustomColorUI);
+        syncCustomColorUI();
       }
 
       // Related items navigation
@@ -520,7 +548,13 @@
 
       const colorSelect = card.querySelector('.color-select');
       if (colorSelect) {
-        options.push(colorSelect.value === 'custom' ? 'Custom Color' : colorSelect.value);
+        if (colorSelect.value === 'custom') {
+          const customColorNote = card.querySelector('.custom-color-note');
+          const customText = customColorNote ? customColorNote.value.trim() : '';
+          options.push(customText ? `Custom Color: ${customText}` : 'Custom Color');
+        } else {
+          options.push(colorSelect.value);
+        }
       }
 
       return options;
@@ -533,8 +567,18 @@
       const discount = parseFloat(item.discount || 0);
       const img = item.img || 'images/placeholder.png';
       const qty = parseInt(card.querySelector('.qty-value')?.textContent || '1', 10);
+      const colorSelect = card.querySelector('.color-select');
+      const customColorNote = card.querySelector('.custom-color-note');
+      const isCustomColor = colorSelect && colorSelect.value === 'custom';
+      const customText = customColorNote ? customColorNote.value.trim() : '';
 
       if (!id || !qty || qty < 1) return;
+
+      if (isCustomColor && !customText) {
+        showToast('Please enter the custom color or notes before adding to cart');
+        if (customColorNote) customColorNote.focus();
+        return;
+      }
 
       // Get selected options
       const options = getSelectedOptions(card);
@@ -542,7 +586,6 @@
       const title = baseTitle + optionsStr;
 
       // Calculate price with discount and custom color fee
-      const colorSelect = card.querySelector('.color-select');
       const customColorFee = parseFloat(item.custom_color_fee || 0);
       let price = basePrice;
       
@@ -552,7 +595,7 @@
       }
       
       // Then add custom color fee if applicable
-      if (colorSelect && colorSelect.value === 'custom' && customColorFee > 0) {
+      if (isCustomColor && customColorFee > 0) {
         price += customColorFee;
       }
 
@@ -572,6 +615,7 @@
       // Reset qty to 1 and show toast
       const qtyEl = card.querySelector('.qty-value');
       if (qtyEl) qtyEl.textContent = '1';
+      if (isCustomColor && customColorNote) customColorNote.value = '';
       showToast(`${qty} × ${title} added to cart`);
     }
 
