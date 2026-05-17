@@ -53,6 +53,21 @@
       return `$${num.toFixed(2)}`;
     }
 
+    function parseCartTitle(title) {
+      const match = title.match(/^(.*?)\s*\(Custom Color:\s*(.*?)\)$/);
+      if (match) {
+        return {
+          baseTitle: match[1].trim(),
+          customNote: match[2].trim()
+        };
+      }
+
+      return {
+        baseTitle: title || 'Item',
+        customNote: ''
+      };
+    }
+
     function renderCart() {
       const cart = loadCart();
 
@@ -75,14 +90,16 @@
       cart.forEach(item => {
         const subtotal = item.price * item.qty;
         total += subtotal;
+        const parsedTitle = parseCartTitle(item.title || 'Item');
 
         const wrapper = document.createElement('div');
         wrapper.className = 'cart-item';
 
         wrapper.innerHTML = `
-          <img src="${item.img || ''}" alt="${item.title || 'Item'}">
+          <img src="${item.img || ''}" alt="${parsedTitle.baseTitle || 'Item'}">
           <div class="cart-item-details">
-            <h4>${item.title || 'Item'}</h4>
+            <h4>${parsedTitle.baseTitle || 'Item'}</h4>
+            ${parsedTitle.customNote ? `<p class="cart-item-note"><strong>Custom Color / Notes:</strong> ${parsedTitle.customNote}</p>` : ''}
             <div class="qty-control" style="justify-content:flex-start; gap:8px; margin-top:6px;">
               <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
               <span class="qty-value">${item.qty}</span>
