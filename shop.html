@@ -63,6 +63,7 @@
     const CART_KEY = 'jgv3d_cart';
     const CATEGORY_KEY = 'jgv3d_last_category';
     const SUBCATEGORY_KEY = 'jgv3d_last_subcategory';
+    const DRAFT_CUSTOM_NOTES_KEY = 'jgv3d_custom_note_drafts';
     const CUSTOM_NOTE_MAX_LENGTH = 160;
     
     let allProducts = [];
@@ -97,13 +98,33 @@
       return rows;
     }
 
-    function escapeHTML(str) {
-      return String(str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+    function getDraftNotes() {
+      try {
+        return JSON.parse(localStorage.getItem(DRAFT_CUSTOM_NOTES_KEY)) || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function saveDraftNotes(drafts) {
+      localStorage.setItem(DRAFT_CUSTOM_NOTES_KEY, JSON.stringify(drafts));
+    }
+
+    function getDraftNote(itemId) {
+      if (!itemId) return '';
+      const drafts = getDraftNotes();
+      return drafts[itemId] || '';
+    }
+
+    function setDraftNote(itemId, value) {
+      if (!itemId) return;
+      const drafts = getDraftNotes();
+      if (value && value.trim()) {
+        drafts[itemId] = value;
+      } else {
+        delete drafts[itemId];
+      }
+      saveDraftNotes(drafts);
     }
 
     function getDisplayPrice(item) {
@@ -135,9 +156,9 @@
       card.dataset.discount = item.discount || '0';
 
       const basePrice = parseFloat(item.price);
-      const displayPrice = getDisplayPrice(item);
       const discount = parseFloat(item.discount || '0');
       const hasDiscount = discount > 0 && !isNaN(discount) && !isNaN(basePrice);
+      const salePrice = hasDiscount ? basePrice * (1 - discount / 100) : basePrice;
       const customColorFee = parseFloat(item.custom_color_fee || '0');
       const hasCustomColorOption = customColorFee > 0;
       
@@ -146,17 +167,15 @@
         priceHTML = `
           <div class="price-container">
             <span class="original-price">$${basePrice.toFixed(2)}</span>
-            <span class="sale-price">$${displayPrice.toFixed(2)}</span>
+            <span class="sale-price">$${salePrice.toFixed(2)}</span>
           </div>
         `;
       } else {
-        priceHTML = `<div class="product-price">${isNaN(displayPrice) ? 'Contact for price' : `$${displayPrice.toFixed(2)}`}</div>`;
+        priceHTML = `<div class="product-price">${isNaN(basePrice) ? 'Contact for price' : `$${basePrice.toFixed(2)}`}</div>`;
       }
 
-      if (hasCustomColorOption && !isNaN(displayPrice)) {
-        priceHTML += `
-          <div class="custom-fee-note">Custom color fee: +$${customColorFee.toFixed(2)}</div>
-        `;
+      if (hasCustomColorOption) {
+        priceHTML += `<div class="custom-fee-note">Custom color fee: +$${customColorFee.toFixed(2)}</div>`;
       }
 
       const imgSrc = item.img || PLACEHOLDER_IMG;
@@ -178,6 +197,7 @@
       // Parse options
       const colorOptions = (item.colors || '').split('|').filter(c => c);
       const pickupOptions = (item.pickup_configs || '').split('|').filter(p => p);
+      const draftNote = getDraftNote(item.id || '');
 
       let optionsHTML = '';
       
@@ -234,11 +254,11 @@
         optionsHTML += `
           <div class="option-group custom-color-note-group" style="display:none;">
             <label class="option-label">Custom Color / Notes:</label>
-            <textarea class="option-select custom-color-note" rows="3" maxlength="${CUSTOM_NOTE_MAX_LENGTH}" placeholder="Enter the custom color or any order notes..."></textarea>
+            <textarea class="option-select custom-color-note auto-resize-note" rows="3" maxlength="${CUSTOM_NOTE_MAX_LENGTH}" placeholder="Enter the custom color or any order notes...">${draftNote}</textarea>
             <div class="custom-color-help">Describe the color, finish, burst, sparkle, or other special requests.</div>
             <div class="custom-color-meta">
               <span class="custom-color-limit">Max ${CUSTOM_NOTE_MAX_LENGTH} characters</span>
-              <span class="custom-color-counter">0/${CUSTOM_NOTE_MAX_LENGTH}</span>
+              <span class="custom-color-counter">${draftNote.length}/${CUSTOM_NOTE_MAX_LENGTH}</span>
             </div>
           </div>
         `;
@@ -311,6 +331,12 @@
       const customColorCounter = card.querySelector('.custom-color-counter');
       const productImg = card.querySelector('.product-img');
 
+      function autoResizeTextarea(textarea) {
+        if (!textarea) return;
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 180) + 'px';
+      }
+
       if (minus && plus && display) {
         minus.addEventListener('click', () => {
           const current = parseInt(display.textContent || '1', 10);
@@ -326,12 +352,20 @@
         addBtn.addEventListener('click', () => addToCart(card, item));
       }
 
-      if (customColorNote && customColorCounter) {
-        const updateCounter = () => {
-          customColorCounter.textContent = `${customColorNote.value.length}/${CUSTOM_NOTE_MAX_LENGTH}`;
+      if (customColorNote) {
+        const updateCustomNoteUI = () => {
+          if (customColorCounter) {
+            customColorCounter.textContent = `${customColorNote.value.length}/${CUSTOM_NOTE_MAX_LENGTH}`;
+          }
+          autoResizeTextarea(customColorNote);
         };
-        customColorNote.addEventListener('input', updateCounter);
-        updateCounter();
+
+        customColorNote.addEventListener('input', () => {
+          setDraftNote(item.id || '', customColorNote.value);
+          updateCustomNoteUI();
+        });
+
+        updateCustomNoteUI();
       }
 
       // Color image swapping + custom note toggle
@@ -355,10 +389,15 @@
             customColorNoteGroup.style.display = isCustom ? 'flex' : 'none';
           }
 
-          if (!isCustom && customColorNote) {
-            customColorNote.value = '';
-            if (customColorCounter) {
-              customColorCounter.textContent = `0/${CUSTOM_NOTE_MAX_LENGTH}`;
+          if (customColorNote) {
+            if (isCustom) {
+              const savedDraft = getDraftNote(item.id || '');
+              if (savedDraft && !customColorNote.value) {
+                customColorNote.value = savedDraft;
+              }
+              autoResizeTextarea(customColorNote);
+            } else {
+              autoResizeTextarea(customColorNote);
             }
           }
 
@@ -623,12 +662,6 @@
         return;
       }
 
-      if (isCustomColor && customText.length > CUSTOM_NOTE_MAX_LENGTH) {
-        showToast(`Custom color notes must be ${CUSTOM_NOTE_MAX_LENGTH} characters or less`);
-        if (customColorNote) customColorNote.focus();
-        return;
-      }
-
       // Get selected options
       const options = getSelectedOptions(card);
       const optionsStr = options.length > 0 ? ` (${options.join(', ')})` : '';
@@ -666,6 +699,8 @@
       if (qtyEl) qtyEl.textContent = '1';
       if (isCustomColor && customColorNote) {
         customColorNote.value = '';
+        setDraftNote(id, '');
+        customColorNote.style.height = 'auto';
         const customColorCounter = card.querySelector('.custom-color-counter');
         if (customColorCounter) {
           customColorCounter.textContent = `0/${CUSTOM_NOTE_MAX_LENGTH}`;
