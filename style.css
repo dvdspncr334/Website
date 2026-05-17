@@ -383,6 +383,31 @@ footer a:hover {
   color: #fff;
 }
 
+.custom-color-help {
+  font-size: 0.8em;
+  color: #bbb;
+  line-height: 1.4;
+}
+
+.custom-color-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.78em;
+  color: #999;
+}
+
+.custom-color-counter {
+  color: #e67e22;
+  font-weight: bold;
+}
+
+.custom-fee-note {
+  margin-top: 6px;
+  font-size: 0.82em;
+  color: #b8d8b8;
+}
+
 /* Divider Line */
 .divider {
   width: 2px;
@@ -631,6 +656,21 @@ footer a:hover {
 .cart-item-details p {
   margin: 5px 0;
   color: #ddd;
+}
+
+.cart-item-note {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #2a2a2a;
+  border-left: 3px solid #e67e22;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #d7d7d7;
+  line-height: 1.45;
+}
+
+.cart-item-note strong {
+  color: #f0b27a;
 }
 
 .cart-item-price {
