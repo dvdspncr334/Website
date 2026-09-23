@@ -26,7 +26,13 @@
   <div id="gallery-modal" class="gallery-overlay" aria-hidden="true">
     <div class="gallery-overlay-content">
       <button class="gallery-overlay-close" aria-label="Close preview">×</button>
-      <img id="overlay-img" alt="">
+      <div class="gallery-overlay-image-wrap">
+        <button id="overlay-prev" class="gallery-overlay-nav" aria-label="Previous image">‹</button>
+        <img id="overlay-img" alt="">
+        <button id="overlay-next" class="gallery-overlay-nav" aria-label="Next image">›</button>
+      </div>
+      <div class="gallery-overlay-counter" id="overlay-counter"></div>
+      <div class="gallery-overlay-thumbs" id="overlay-thumbs"></div>
       <div class="gallery-overlay-title" id="overlay-title"></div>
       <div class="gallery-overlay-label" id="overlay-label"></div>
     </div>
@@ -102,14 +108,63 @@
     const PLACEHOLDER_IMG = 'images/placeholder.png';
     const overlay = document.getElementById('gallery-modal');
     const overlayImg = document.getElementById('overlay-img');
+    const overlayPrev = document.getElementById('overlay-prev');
+    const overlayNext = document.getElementById('overlay-next');
+    const overlayCounter = document.getElementById('overlay-counter');
+    const overlayThumbs = document.getElementById('overlay-thumbs');
     const overlayTitle = document.getElementById('overlay-title');
     const overlayLabel = document.getElementById('overlay-label');
+    let overlayImages = [];
+    let overlayImageIndex = 0;
+    let overlayItem = null;
 
-    function showOverlay(item) {
-      overlayImg.src = item.img || PLACEHOLDER_IMG;
-      overlayImg.alt = item.title || 'Preview';
-      overlayTitle.textContent = item.title || '';
-      overlayLabel.textContent = item.label || '';
+    function getMultiImages(item) {
+      return (item.images || '')
+        .split('|')
+        .map(img => img.trim())
+        .filter(Boolean);
+    }
+
+    function getItemImages(item) {
+      const images = getMultiImages(item);
+      return images.length ? images : [item.img || PLACEHOLDER_IMG];
+    }
+
+    function updateOverlayImage() {
+      const hasMultiple = overlayImages.length > 1;
+      const src = overlayImages[overlayImageIndex] || PLACEHOLDER_IMG;
+      overlayImg.src = src;
+      overlayImg.alt = (overlayItem && overlayItem.title) || 'Preview';
+      overlayImg.onerror = () => { overlayImg.src = PLACEHOLDER_IMG; };
+      overlayTitle.textContent = (overlayItem && overlayItem.title) || '';
+      overlayLabel.textContent = (overlayItem && overlayItem.label) || '';
+      overlayPrev.style.display = hasMultiple ? 'flex' : 'none';
+      overlayNext.style.display = hasMultiple ? 'flex' : 'none';
+      overlayCounter.textContent = hasMultiple ? `${overlayImageIndex + 1} / ${overlayImages.length}` : '';
+      overlayThumbs.innerHTML = '';
+
+      if (hasMultiple) {
+        overlayImages.forEach((imgPath, idx) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = `gallery-overlay-thumb${idx === overlayImageIndex ? ' active' : ''}`;
+          button.setAttribute('aria-label', `View image ${idx + 1}`);
+          button.innerHTML = `<img src="${imgPath}" alt="${(overlayItem && overlayItem.title) || 'Preview'} ${idx + 1}" onerror="this.src='${PLACEHOLDER_IMG}'">`;
+          button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            overlayImageIndex = idx;
+            updateOverlayImage();
+          });
+          overlayThumbs.appendChild(button);
+        });
+      }
+    }
+
+    function showOverlay(item, startIndex = 0) {
+      overlayItem = item;
+      overlayImages = getItemImages(item);
+      overlayImageIndex = Math.max(0, Math.min(startIndex, overlayImages.length - 1));
+      updateOverlayImage();
       overlay.classList.add('show');
       overlay.setAttribute('aria-hidden', 'false');
     }
@@ -125,6 +180,22 @@
       }
     });
 
+    overlayPrev.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (overlayImages.length > 1) {
+        overlayImageIndex = (overlayImageIndex - 1 + overlayImages.length) % overlayImages.length;
+        updateOverlayImage();
+      }
+    });
+
+    overlayNext.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (overlayImages.length > 1) {
+        overlayImageIndex = (overlayImageIndex + 1) % overlayImages.length;
+        updateOverlayImage();
+      }
+    });
+
     /* ---------- Card creation ---------- */
     function createGalleryCard(item) {
       const PLACEHOLDER_IMG = 'images/placeholder.png';
@@ -136,16 +207,46 @@
       card.dataset.title = item.title || '';
 
       const imgSrc = item.img || PLACEHOLDER_IMG;
+      const multiImages = getMultiImages(item);
+      const hasMultiImages = multiImages.length > 0;
+      const initialImageIndex = hasMultiImages ? Math.max(0, multiImages.indexOf(imgSrc)) : 0;
+      let selectedImageIndex = initialImageIndex;
+      const thumbStrip = hasMultiImages ? `
+        <div class="gallery-thumb-strip">
+          ${multiImages.map((img, idx) => `
+            <button type="button" class="gallery-thumb-btn${idx === initialImageIndex ? ' active' : ''}" data-index="${idx}" aria-label="View ${item.title || 'gallery item'} image ${idx + 1}">
+              <img src="${img}" alt="${item.title || 'Gallery Item'} ${idx + 1}" onerror="this.src='${PLACEHOLDER_IMG}'">
+            </button>
+          `).join('')}
+        </div>
+      ` : '';
 
       card.innerHTML = `
         <div class="gallery-img-wrap">
-          <img src="${imgSrc}" alt="${item.title || 'Gallery Item'}" onerror="this.src='${PLACEHOLDER_IMG}'">
+          <img class="gallery-main-img" src="${imgSrc}" alt="${item.title || 'Gallery Item'}" onerror="this.src='${PLACEHOLDER_IMG}'">
         </div>
+        ${thumbStrip}
         <div class="product-title">${item.title || ''}</div>
         <div class="product-price">${item.label || ''}</div>
       `;
 
-      card.addEventListener('click', () => showOverlay(item));
+      if (hasMultiImages) {
+        const mainImg = card.querySelector('.gallery-main-img');
+        const thumbButtons = card.querySelectorAll('.gallery-thumb-btn');
+        thumbButtons.forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const idx = Number(btn.dataset.index) || 0;
+            mainImg.src = multiImages[idx] || imgSrc;
+            selectedImageIndex = idx;
+            thumbButtons.forEach((button) => button.classList.remove('active'));
+            btn.classList.add('active');
+            showOverlay(item, idx);
+          });
+        });
+      }
+
+      card.addEventListener('click', () => showOverlay(item, selectedImageIndex));
       return card;
     }
 

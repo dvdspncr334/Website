@@ -1,13 +1,13 @@
-title,img,category,label,subcategory,handedness
-Telecaster – Blank,images/Telecaster_white_blank.png,telecaster,Render,classic,both
-Telecaster – Hexagon,images/Telecaster_white_hexagon.png,telecaster,Render,classic,both
-Telecaster – Spider Web,images/Telecaster_white_spiderweb.png,telecaster,Render,classic,both
-Telecaster – Cannabis,images/Telecaster_white_cannabis.png,telecaster,Render,modern,both
-Stratocaster – Blank,images/Stratocaster_white_blank.png,stratocaster,Render,standard-sss,both
-Stratocaster – Hexagon,images/Stratocaster_white_hexagon.png,stratocaster,Render,standard-sss,both
-Stratocaster – Spider Web,images/Stratocaster_white_spiderweb.png,stratocaster,Render,standard-hss,both
-Stratocaster – Cannabis,images/Stratocaster_white_cannabis.png,stratocaster,Render,standard-sss,both
-Stratocaster – Flower Of Life,images/Stratocaster_white_floweroflife.png,stratocaster,Render,standard-sss,both
-Stratocaster – Hollow,images/Stratocaster_white_hollow.png,stratocaster,Render,hollow,left
-Stratocaster – Spiraling Gyroid,images/Stratocaster_white_spiralinggyroid.png,stratocaster,Render,standard-sss,both
-
+title,img,category,label,subcategory,handedness,images
+Telecaster – Blank,images/Telecaster_white_blank.png,telecaster,Render,classic,both,
+Telecaster – Hexagon,images/Telecaster_white_hexagon.png,telecaster,Render,classic,both,
+Telecaster – Spider Web,images/Telecaster_white_spiderweb.png,telecaster,Render,classic,both,
+Telecaster – Cannabis,images/Telecaster_white_cannabis.png,telecaster,Render,modern,both,
+Stratocaster – Blank,images/Stratocaster/Blank/HSS/White.png,stratocaster,Render,standard-sss,both,images/Stratocaster/Blank/HSS/Black.png|images/Stratocaster/Blank/HSS/Blue.PNG|images/Stratocaster/Blank/HSS/Green.PNG|images/Stratocaster/Blank/HSS/Orange.PNG|images/Stratocaster/Blank/HSS/Purple.PNG|images/Stratocaster/Blank/HSS/Red.PNG|images/Stratocaster/Blank/HSS/White.png|images/Stratocaster/Blank/HSS/Yellow.PNG
+Stratocaster – Hexagon,images/Stratocaster/Hexagon/HSS/White.png,stratocaster,Render,standard-sss,both,images/Stratocaster/Hexagon/HSS/Black.png|images/Stratocaster/Hexagon/HSS/Blue.png|images/Stratocaster/Hexagon/HSS/Green.png|images/Stratocaster/Hexagon/HSS/Orange.png|images/Stratocaster/Hexagon/HSS/Purple.png|images/Stratocaster/Hexagon/HSS/Red.png|images/Stratocaster/Hexagon/HSS/White.png|images/Stratocaster/Hexagon/HSS/Yellow.png
+Stratocaster – Spider Web,images/Stratocaster/Spiderweb/HSS/White.PNG,stratocaster,Render,standard-hss,both,images/Stratocaster/Spiderweb/HSS/Black.PNG|images/Stratocaster/Spiderweb/HSS/Blue.PNG|images/Stratocaster/Spiderweb/HSS/Green.PNG|images/Stratocaster/Spiderweb/HSS/Orange.png|images/Stratocaster/Spiderweb/HSS/Purple.png|images/Stratocaster/Spiderweb/HSS/Red.PNG|images/Stratocaster/Spiderweb/HSS/White.PNG|images/Stratocaster/Spiderweb/HSS/Yellow.PNG
+Stratocaster – Cannabis,images/Stratocaster_white_cannabis.png,stratocaster,Render,standard-sss,both,
+Stratocaster – Flower Of Life,images/Stratocaster_white_floweroflife.png,stratocaster,Render,standard-sss,both,
+Stratocaster – Hollow,images/Stratocaster_white_hollow.png,stratocaster,Render,hollow,left,
+Stratocaster – Fully Hollow,images/Stratocaster/FullyHollow/HSS/White.PNG,stratocaster,Render,hollow,both,images/Stratocaster/FullyHollow/HSS/Black.PNG|images/Stratocaster/FullyHollow/HSS/Blue.PNG|images/Stratocaster/FullyHollow/HSS/Green.PNG|images/Stratocaster/FullyHollow/HSS/Orange.PNG|images/Stratocaster/FullyHollow/HSS/Purple.png|images/Stratocaster/FullyHollow/HSS/Red.PNG|images/Stratocaster/FullyHollow/HSS/White.PNG|images/Stratocaster/FullyHollow/HSS/Yellow.PNG
+Stratocaster – Spiraling Gyroid,images/Stratocaster_white_spiralinggyroid.png,stratocaster,Render,standard-sss,both,
