@@ -81,6 +81,15 @@
       };
     }
 
+    function normalizeCartItem(item) {
+      const normalized = item || {};
+      normalized.img = normalized.img || 'images/placeholder.png';
+      normalized.title = normalized.title || 'Item';
+      normalized.qty = Number(normalized.qty) > 0 ? Number(normalized.qty) : 1;
+      normalized.price = Number(normalized.price) || 0;
+      return normalized;
+    }
+
     function renderCartSummary(cart) {
       const customOrderCount = cart.reduce((count, item) => {
         const parsed = parseCartTitle(item.title || 'Item');
@@ -96,7 +105,7 @@
     }
 
     function renderCart() {
-      const cart = loadCart();
+      const cart = loadCart().map(item => normalizeCartItem(item));
 
       // Sort alphabetically by title
       cart.sort((a, b) => (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase()));
@@ -123,12 +132,13 @@
         const parsedTitle = parseCartTitle(item.title || 'Item');
         const safeBaseTitle = escapeHTML(parsedTitle.baseTitle || 'Item');
         const safeCustomNote = escapeHTML(parsedTitle.customNote || '');
+        const itemImage = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
 
         const wrapper = document.createElement('div');
         wrapper.className = 'cart-item';
 
         wrapper.innerHTML = `
-          <img src="${item.img || ''}" alt="${safeBaseTitle}">
+          <img src="${itemImage}" alt="${safeBaseTitle}" onerror="this.src='images/placeholder.png'">
           <div class="cart-item-details">
             <div class="cart-item-header-row">
               <h4>${safeBaseTitle}</h4>
@@ -152,25 +162,27 @@
         const removeBtn = wrapper.querySelector('.remove-btn');
 
         minus.addEventListener('click', () => {
-          const cartData = loadCart();
+          const cartData = loadCart().map(entry => normalizeCartItem(entry));
           const entry = cartData.find(x => x.id === item.id);
           if (!entry) return;
-          entry.qty = Math.max(1, entry.qty - 1);
+          entry.qty = Math.max(1, Number(entry.qty) - 1);
+          entry.img = item.img && item.img.trim() ? item.img : entry.img || 'images/placeholder.png';
           saveCart(cartData);
           qtyEl.textContent = entry.qty;
           priceEl.textContent = formatPrice(entry.qty * entry.price);
-          renderCart(); // refresh totals and order
+          renderCart();
         });
 
         plus.addEventListener('click', () => {
-          const cartData = loadCart();
+          const cartData = loadCart().map(entry => normalizeCartItem(entry));
           const entry = cartData.find(x => x.id === item.id);
           if (!entry) return;
           entry.qty += 1;
+          entry.img = item.img && item.img.trim() ? item.img : entry.img || 'images/placeholder.png';
           saveCart(cartData);
           qtyEl.textContent = entry.qty;
           priceEl.textContent = formatPrice(entry.qty * entry.price);
-          renderCart(); // refresh totals and order
+          renderCart();
         });
 
         removeBtn.addEventListener('click', () => {
@@ -187,7 +199,7 @@
 
     // Update mini-cart count
     function updateMiniCart() {
-      const cart = loadCart();
+      const cart = loadCart().map(item => normalizeCartItem(item));
       const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
       const miniCartCount = document.getElementById('mini-cart-count');
       if (miniCartCount) {
