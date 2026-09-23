@@ -83,3 +83,4 @@
 - Discount applies before custom color fee in cart
 - Related items prioritize same subcategory, then same category
 - Mini-cart count updates immediately after adding items
+- Stratocaster HSS listings still awaiting real uploaded body images: `strat-hss-cannacaster`, `strat-hss-floweroflife`, `strat-hss-spiralgyroid`, `strat-hss-cts`, `strat-hss-bubbles`, `strat-hss-voronoi`. Their repo folders/assets do not exist yet, so they currently use `images/placeholder.png` until those pattern images are added under their respective `images/Stratocaster/.../HSS/` folders.
