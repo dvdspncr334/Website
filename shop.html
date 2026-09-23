@@ -674,12 +674,16 @@
       const baseTitle = item.title || 'Item';
       const basePrice = parseFloat(item.price || 0);
       const discount = parseFloat(item.discount || 0);
-      const img = item.img || 'images/placeholder.png';
       const qty = parseInt(card.querySelector('.qty-value')?.textContent || '1', 10);
       const colorSelect = card.querySelector('.color-select');
       const customColorNote = card.querySelector('.custom-color-note');
       const isCustomColor = colorSelect && colorSelect.value === 'custom';
       const customText = customColorNote ? customColorNote.value.trim() : '';
+
+      // Use the image currently displayed on the card (reflects the
+      // selected color variant), falling back to the item's default image.
+      const productImg = card.querySelector('.product-img');
+      const img = (productImg && productImg.src) ? productImg.src : (item.img || 'images/placeholder.png');
 
       if (!id || !qty || qty < 1) return;
 
@@ -715,6 +719,7 @@
       const existing = cart.find(item => item.id === cartId);
       if (existing) {
         existing.qty += qty;
+        existing.img = img;
       } else {
         cart.push({ id: cartId, title, price, img, qty });
       }
