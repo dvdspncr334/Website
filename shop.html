@@ -64,6 +64,7 @@
     const CATEGORY_KEY = 'jgv3d_last_category';
     const SUBCATEGORY_KEY = 'jgv3d_last_subcategory';
     const DRAFT_CUSTOM_NOTES_KEY = 'jgv3d_custom_note_drafts';
+    const PRODUCT_OPTIONS_KEY = 'jgv3d_shop_selected_options';
     const CUSTOM_NOTE_MAX_LENGTH = 160;
     
     let allProducts = [];
@@ -154,6 +155,40 @@
       saveDraftNotes(drafts);
     }
 
+    /* ---------- Product Option Selection Persistence ---------- */
+    function getSavedProductOptions() {
+      try {
+        return JSON.parse(localStorage.getItem(PRODUCT_OPTIONS_KEY)) || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function getItemKey(item) {
+      return item.id || item.title || '';
+    }
+
+    function saveProductOption(item, key, value) {
+      const itemKey = getItemKey(item);
+      if (!itemKey) return;
+      const allOptions = getSavedProductOptions();
+      const itemOptions = allOptions[itemKey] || {};
+      itemOptions[key] = value;
+      allOptions[itemKey] = itemOptions;
+      try {
+        localStorage.setItem(PRODUCT_OPTIONS_KEY, JSON.stringify(allOptions));
+      } catch (e) {}
+    }
+
+    function getSavedProductOption(item, key) {
+      const itemKey = getItemKey(item);
+      if (!itemKey) return null;
+      const allOptions = getSavedProductOptions();
+      const itemOptions = allOptions[itemKey];
+      if (!itemOptions) return null;
+      return Object.prototype.hasOwnProperty.call(itemOptions, key) ? itemOptions[key] : null;
+    }
+
     function getDisplayPrice(item) {
       const basePrice = parseFloat(item.price);
       const discount = parseFloat(item.discount || '0');
@@ -226,6 +261,11 @@
       const pickupOptions = (item.pickup_configs || '').split('|').filter(p => p);
       const draftNote = getDraftNote(item.id || '');
 
+      // Restore saved selections (fall back gracefully if not previously saved)
+      const savedHandedness = getSavedProductOption(item, 'handedness');
+      const savedPickup = getSavedProductOption(item, 'pickup');
+      const savedColor = getSavedProductOption(item, 'color');
+
       let optionsHTML = '';
       
       // Handedness selector - show if handedness is specified
@@ -235,8 +275,8 @@
             <div class="option-group">
               <label class="option-label">Handedness:</label>
               <select class="option-select handedness-select">
-                <option value="right">Right</option>
-                <option value="left">Left</option>
+                <option value="right"${savedHandedness === 'right' ? ' selected' : ''}>Right</option>
+                <option value="left"${savedHandedness === 'left' ? ' selected' : ''}>Left</option>
               </select>
             </div>
           `;
@@ -258,7 +298,7 @@
           <div class="option-group">
             <label class="option-label">Pickup Config:</label>
             <select class="option-select pickup-select">
-              ${pickupOptions.map(p => `<option value="${p}">${p}</option>`).join('')}
+              ${pickupOptions.map(p => `<option value="${p}"${savedPickup === p ? ' selected' : ''}>${p}</option>`).join('')}
             </select>
           </div>
         `;
@@ -270,8 +310,8 @@
           <div class="option-group">
             <label class="option-label">Color:</label>
             <select class="option-select color-select">
-              ${colorOptions.map(c => `<option value="${c}">${c}</option>`).join('')}
-              ${hasCustomColorOption ? `<option value="custom">Custom Color (+$${customColorFee.toFixed(2)})</option>` : ''}
+              ${colorOptions.map(c => `<option value="${c}"${savedColor === c ? ' selected' : ''}>${c}</option>`).join('')}
+              ${hasCustomColorOption ? `<option value="custom"${savedColor === 'custom' ? ' selected' : ''}>Custom Color (+$${customColorFee.toFixed(2)})</option>` : ''}
             </select>
           </div>
         `;
@@ -352,6 +392,8 @@
       const plus = card.querySelector('.qty-btn.plus');
       const display = card.querySelector('.qty-value');
       const addBtn = card.querySelector('.add-btn');
+      const handednessSelect = card.querySelector('.handedness-select');
+      const pickupSelect = card.querySelector('.pickup-select');
       const colorSelect = card.querySelector('.color-select');
       const customColorNoteGroup = card.querySelector('.custom-color-note-group');
       const customColorNote = card.querySelector('.custom-color-note');
@@ -377,6 +419,18 @@
 
       if (addBtn) {
         addBtn.addEventListener('click', () => addToCart(card, item));
+      }
+
+      if (handednessSelect) {
+        handednessSelect.addEventListener('change', () => {
+          saveProductOption(item, 'handedness', handednessSelect.value);
+        });
+      }
+
+      if (pickupSelect) {
+        pickupSelect.addEventListener('change', () => {
+          saveProductOption(item, 'pickup', pickupSelect.value);
+        });
       }
 
       if (customColorNote) {
@@ -439,7 +493,10 @@
           }
         };
 
-        colorSelect.addEventListener('change', syncCustomColorUI);
+        colorSelect.addEventListener('change', () => {
+          saveProductOption(item, 'color', colorSelect.value);
+          syncCustomColorUI();
+        });
         syncCustomColorUI();
       }
 
