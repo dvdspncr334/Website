@@ -72,6 +72,7 @@
     /* ---------- State and Constants ---------- */
     const CATEGORY_KEY = 'jgv3d_gallery_category';
     const SUBCATEGORY_KEY = 'jgv3d_gallery_subcategory';
+    const IMAGE_SELECTION_KEY = 'jgv3d_gallery_image_selection';
     
     let allItems = [];
     let currentCategory = localStorage.getItem(CATEGORY_KEY) || 'all';
@@ -84,6 +85,40 @@
     const subcategoryFilter = document.getElementById('subcategory-filter');
     const searchBox = document.getElementById('search-box');
     const sortSelect = document.getElementById('sort-select');
+
+    /* ---------- Image Selection Persistence ---------- */
+    function getSavedImageSelections() {
+      try {
+        return JSON.parse(localStorage.getItem(IMAGE_SELECTION_KEY)) || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function getItemKey(item) {
+      return item.id || item.title || '';
+    }
+
+    function saveImageSelection(item, index) {
+      const key = getItemKey(item);
+      if (!key) return;
+      const selections = getSavedImageSelections();
+      selections[key] = index;
+      try {
+        localStorage.setItem(IMAGE_SELECTION_KEY, JSON.stringify(selections));
+      } catch (e) {}
+    }
+
+    function getSavedImageIndex(item, maxIndex) {
+      const key = getItemKey(item);
+      if (!key) return null;
+      const selections = getSavedImageSelections();
+      const saved = selections[key];
+      if (typeof saved === 'number' && saved >= 0 && saved <= maxIndex) {
+        return saved;
+      }
+      return null;
+    }
 
     /* ---------- CSV Parsing ---------- */
     function parseCSV(text) {
@@ -154,6 +189,10 @@
             e.stopPropagation();
             overlayImageIndex = idx;
             updateOverlayImage();
+            if (overlayItem) {
+              saveImageSelection(overlayItem, overlayImageIndex);
+              syncCardSelection(overlayItem, overlayImageIndex);
+            }
           });
           overlayThumbs.appendChild(button);
         });
@@ -185,6 +224,10 @@
       if (overlayImages.length > 1) {
         overlayImageIndex = (overlayImageIndex - 1 + overlayImages.length) % overlayImages.length;
         updateOverlayImage();
+        if (overlayItem) {
+          saveImageSelection(overlayItem, overlayImageIndex);
+          syncCardSelection(overlayItem, overlayImageIndex);
+        }
       }
     });
 
@@ -193,8 +236,22 @@
       if (overlayImages.length > 1) {
         overlayImageIndex = (overlayImageIndex + 1) % overlayImages.length;
         updateOverlayImage();
+        if (overlayItem) {
+          saveImageSelection(overlayItem, overlayImageIndex);
+          syncCardSelection(overlayItem, overlayImageIndex);
+        }
       }
     });
+
+    /* ---------- Keep gallery card in sync with overlay selection ---------- */
+    function syncCardSelection(item, index) {
+      const key = getItemKey(item);
+      if (!key) return;
+      const card = productsContainer.querySelector(`.product[data-key="${CSS.escape(key)}"]`);
+      if (card && typeof card.__setSelectedImage === 'function') {
+        card.__setSelectedImage(index);
+      }
+    }
 
     /* ---------- Card creation ---------- */
     function createGalleryCard(item) {
@@ -205,11 +262,14 @@
       card.dataset.category = item.category || '';
       card.dataset.subcategory = item.subcategory || '';
       card.dataset.title = item.title || '';
+      card.dataset.key = getItemKey(item);
 
       const imgSrc = item.img || PLACEHOLDER_IMG;
       const multiImages = getMultiImages(item);
       const hasMultiImages = multiImages.length > 0;
-      const initialImageIndex = hasMultiImages ? Math.max(0, multiImages.indexOf(imgSrc)) : 0;
+      const defaultIndex = hasMultiImages ? Math.max(0, multiImages.indexOf(imgSrc)) : 0;
+      const savedIndex = hasMultiImages ? getSavedImageIndex(item, multiImages.length - 1) : null;
+      const initialImageIndex = savedIndex !== null ? savedIndex : defaultIndex;
       let selectedImageIndex = initialImageIndex;
       const thumbStrip = hasMultiImages ? `
         <div class="gallery-thumb-strip">
@@ -223,7 +283,7 @@
 
       card.innerHTML = `
         <div class="gallery-img-wrap">
-          <img class="gallery-main-img" src="${imgSrc}" alt="${item.title || 'Gallery Item'}" onerror="this.src='${PLACEHOLDER_IMG}'">
+          <img class="gallery-main-img" src="${hasMultiImages ? multiImages[initialImageIndex] : imgSrc}" alt="${item.title || 'Gallery Item'}" onerror="this.src='${PLACEHOLDER_IMG}'">
         </div>
         ${thumbStrip}
         <div class="product-title">${item.title || ''}</div>
@@ -233,14 +293,23 @@
       if (hasMultiImages) {
         const mainImg = card.querySelector('.gallery-main-img');
         const thumbButtons = card.querySelectorAll('.gallery-thumb-btn');
+
+        const setSelectedImage = (idx) => {
+          if (idx < 0 || idx >= multiImages.length) return;
+          selectedImageIndex = idx;
+          mainImg.src = multiImages[idx] || imgSrc;
+          thumbButtons.forEach((button) => button.classList.remove('active'));
+          const target = card.querySelector(`.gallery-thumb-btn[data-index="${idx}"]`);
+          if (target) target.classList.add('active');
+        };
+        card.__setSelectedImage = setSelectedImage;
+
         thumbButtons.forEach((btn) => {
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const idx = Number(btn.dataset.index) || 0;
-            mainImg.src = multiImages[idx] || imgSrc;
-            selectedImageIndex = idx;
-            thumbButtons.forEach((button) => button.classList.remove('active'));
-            btn.classList.add('active');
+            setSelectedImage(idx);
+            saveImageSelection(item, idx);
             showOverlay(item, idx);
           });
         });
