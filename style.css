@@ -843,7 +843,7 @@ footer a:hover {
   background: #1f1f1f;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  padding: 44px 16px 12px;
+  padding: 16px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
   max-width: 90vw;
   max-height: 90vh;
@@ -851,6 +851,7 @@ footer a:hover {
   flex-direction: column;
   gap: 6px;
   align-items: center;
+  z-index: 0;
 }
 
 .gallery-overlay-content img {
@@ -894,6 +895,7 @@ footer a:hover {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 1;
 }
 
 .gallery-overlay-nav {
@@ -972,7 +974,7 @@ footer a:hover {
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 10;
+  z-index: 50;
   background: #333;
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.15);
