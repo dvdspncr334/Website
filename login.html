@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/x-icon" href="images/favicon.ico">
+  <title>Login | JGV3D Guitar Bodies</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <h1>Login</h1>
+    <div class="header-buttons">
+      <a href="index.html">Home</a>
+      <a href="shop.html">Shop</a>
+      <a href="gallery.html">Gallery</a>
+      <a href="about.html">About Us</a>
+      <a href="usefullinks.html">Useful Links</a>
+      <a href="cart.html" class="mini-cart" id="mini-cart">
+        Cart
+        <span class="mini-cart-count" id="mini-cart-count">0</span>
+      </a>
+      <!-- Login link hidden (current page) -->
+    </div>
+  </header>
+
+  <!-- Login Content -->
+  <div class="about-container">
+    <h2>Account Login</h2>
+    <p>
+      We're currently building out account and login functionality for JGV3D. This page is a
+      <strong style="color:#e67e22;">work in progress</strong> — check back soon!
+    </p>
+
+    <form onsubmit="return false;" style="max-width:360px; margin:20px auto; text-align:left; display:flex; flex-direction:column; gap:12px;">
+      <div class="option-group">
+        <label class="option-label" for="login-email">Email</label>
+        <input type="email" id="login-email" class="option-select" placeholder="you@example.com" disabled>
+      </div>
+      <div class="option-group">
+        <label class="option-label" for="login-password">Password</label>
+        <input type="password" id="login-password" class="option-select" placeholder="••••••••" disabled>
+      </div>
+      <button type="submit" class="add-btn" disabled style="opacity:0.6; cursor:not-allowed;">Login (Coming Soon)</button>
+      <p class="custom-color-help" style="text-align:center;">
+        Accounts aren't available yet. In the meantime, feel free to
+        <a href="mailto:support@jgv3d.com">contact us</a> with any questions.
+      </p>
+    </form>
+  </div>
+
+  <script>
+    // Update mini-cart count
+    function updateMiniCart() {
+      try {
+        const cart = JSON.parse(localStorage.getItem('jgv3d_cart')) || [];
+        const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+        const miniCartCount = document.getElementById('mini-cart-count');
+        if (miniCartCount) {
+          miniCartCount.textContent = totalItems;
+          miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
+        }
+      } catch (e) {}
+    }
+    updateMiniCart();
+  </script>
+</body>
+</html>
