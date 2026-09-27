@@ -151,7 +151,7 @@
         } else if (index === currentIndex) {
           classes.push('is-active');
         }
-        return `<div class="${classes.join(' ')}">${escapeHTML(step)}<span>${index < currentIndex ? 'Completed stage' : index === currentIndex ? 'Current status' : 'Upcoming stage'}</span></div>`;
+        return `<li class="${classes.join(' ')}" ${index === currentIndex ? 'aria-current="step"' : ''}>${escapeHTML(step)}<span>${index < currentIndex ? 'Completed stage' : index === currentIndex ? 'Current status' : 'Upcoming stage'}</span></li>`;
       }).join('');
 
       const itemsMarkup = items.map(item => {
@@ -206,7 +206,7 @@
 
           <section class="order-progress" aria-label="Order progress">
             <h3>Order Progress</h3>
-            <div class="order-progress-track">${progressMarkup}</div>
+            <ol class="order-progress-track">${progressMarkup}</ol>
           </section>
 
           <section class="order-detail-section">
