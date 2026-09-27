@@ -17,6 +17,7 @@
       <a href="about.html">About Us</a>
       <a href="usefullinks.html">Useful Links</a>
       <!-- Cart link hidden (current page) -->
+      <a href="orders.html">Orders</a>
       <a href="login.html">Login</a>
     </div>
   </header>
@@ -34,6 +35,7 @@
 
   <script>
     const CART_KEY = 'jgv3d_cart';
+    const ORDERS_KEY = 'jgv3d_orders';
 
     const cartItemsEl = document.getElementById('cart-items');
     const cartSummaryEl = document.getElementById('cart-summary');
@@ -50,6 +52,18 @@
 
     function saveCart(cart) {
       localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    }
+
+    function loadOrders() {
+      try {
+        return JSON.parse(localStorage.getItem(ORDERS_KEY)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveOrders(orders) {
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
     }
 
     function formatPrice(num) {
@@ -197,6 +211,37 @@
 
       cartTotalEl.textContent = `Total: ${formatPrice(total)}`;
     }
+
+    // Checkout: move all cart items into a new queued order, clear the cart,
+    // then send the user to the Orders page.
+    checkoutBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const cart = loadCart().map(item => normalizeCartItem(item));
+      if (cart.length === 0) return;
+
+      const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+      const now = new Date();
+      const order = {
+        id: 'JGV-' + now.getTime().toString().slice(-8),
+        date: now.toISOString(),
+        status: 'In Queue',
+        items: cart.map(item => ({
+          id: item.id,
+          title: item.title,
+          img: item.img,
+          qty: item.qty,
+          price: item.price
+        })),
+        total: total
+      };
+
+      const orders = loadOrders();
+      orders.push(order);
+      saveOrders(orders);
+      saveCart([]);
+
+      window.location.href = 'orders.html';
+    });
 
     // Update mini-cart count
     function updateMiniCart() {
