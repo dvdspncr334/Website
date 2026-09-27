@@ -932,6 +932,18 @@ footer a:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.order-status-legend {
+  width: 100%;
+  padding: 0;
+  margin-bottom: 2px;
+  color: #ddd;
+  font-weight: bold;
 }
 
 .order-status-form label {

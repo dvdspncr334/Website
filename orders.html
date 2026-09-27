@@ -213,13 +213,14 @@
             ${canAddressOrder
               ? `<a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>`
               : '<span class="order-card-copy">Order details are unavailable until this local order record has a valid reference.</span>'}
-            <div class="order-status-form" data-order-key="${escapeHTML(orderLookupKey)}" role="group" aria-label="Demo status controls for order ${escapeHTML(order.id || 'this order')}">
+            <fieldset class="order-status-form" data-order-key="${escapeHTML(orderLookupKey)}">
+              <legend class="order-status-legend">Demo status for order ${escapeHTML(order.id || 'this order')}</legend>
               <label for="${escapeHTML(statusControlId)}">Demo status</label>
               <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-describedby="${escapeHTML(statusHelpId)}" ${canAddressOrder ? '' : 'disabled aria-disabled="true"'}>
                 ${ORDER_STATUSES.map(option => `<option value="${escapeHTML(option)}" ${option === status ? 'selected' : ''}>${escapeHTML(option)}</option>`).join('')}
               </select>
               <p class="order-status-help" id="${escapeHTML(statusHelpId)}">${canAddressOrder ? 'Temporary manual control while backend/printer sync is not connected yet.' : 'This local order record needs a valid reference before its demo status can be updated.'}</p>
-            </div>
+            </fieldset>
           </div>
         `;
 
