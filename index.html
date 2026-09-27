@@ -4,16 +4,16 @@
   <meta charset="UTF-8">
   <link rel="icon" type="image/x-icon" href="images/favicon.ico">
   <title>Welcome to JGV3D Guitar Bodies</title>
-  <link rel="stylesheet" href="style.css"> <!-- Link to the global stylesheet -->
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Header -->
   <header class="header">
     <h1>Welcome to JGV3D</h1>
     <div class="header-buttons">
       <a href="shop.html">Shop</a>
       <a href="gallery.html">Gallery</a>
       <a href="about.html">About Us</a>
+      <a href="faq.html">FAQ</a>
       <a href="usefullinks.html">Useful Links</a>
       <a href="cart.html" class="mini-cart" id="mini-cart">
         Cart
@@ -24,7 +24,6 @@
     </div>
   </header>
 
-  <!-- Hero Section -->
   <div class="hero">
     <div>
       <h1>Welcome to JGV3D Guitar Bodies</h1>
@@ -32,6 +31,7 @@
       <div class="button-container">
         <a class="button" href="shop.html">Browse Guitar Bodies</a>
         <a class="button" href="about.html">Learn More</a>
+        <a class="button" href="faq.html">FAQ</a>
         <a class="button" href="gallery.html">Gallery</a>
         <a class="button" href="orders.html">My Orders</a>
         <a class="button" href="usefullinks.html">Useful Links</a>
@@ -39,7 +39,6 @@
     </div>
   </div>
 
-  <!-- Features Section -->
   <section class="features">
     <h2>What Makes Us Special</h2>
     <div class="feature-cards">
@@ -61,7 +60,6 @@
     </div>
   </section>
 
-  <!-- Testimonials Section -->
   <section class="testimonials">
     <h2>What Our Customers Say</h2>
     <div class="testimonial">
@@ -69,24 +67,16 @@
       <h4>- Alex G.</h4>
     </div>
     <div class="testimonial">
-      <p>"These guitar bodies are incredible. Lightweight and durable, plus the customization process was so easy. Amazing quality!"</p>
-      <h4>- Sam P.</h4>
+      <p>"I wanted something different from the usual bodies, and JGV3D delivered. The balance and comfort are incredible."</p>
+      <h4>- Sam R.</h4>
     </div>
   </section>
 
-  <!-- Footer Section -->
-  <footer class="footer">
-    <p>&copy; 2025 JGV3D Guitar Bodies. All rights reserved.</p>
-    <p><a href="mailto:support@jgv3d.com">Contact Us</a> | <a href="#">Subscribe to Newsletter</a></p>
-    <p>Follow us: <a href="https://instagram.com/jgv3d">Instagram</a> | <a href="https://facebook.com/jgv3d">Facebook</a></p>
-  </footer>
-
   <script>
-    // Update mini-cart count
     function updateMiniCart() {
       try {
         const cart = JSON.parse(localStorage.getItem('jgv3d_cart')) || [];
-        const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+        const totalItems = cart.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
         const miniCartCount = document.getElementById('mini-cart-count');
         if (miniCartCount) {
           miniCartCount.textContent = totalItems;

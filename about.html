@@ -7,14 +7,13 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Header -->
   <header class="header">
     <h1>About Us</h1>
     <div class="header-buttons">
       <a href="index.html">Home</a>
       <a href="shop.html">Shop</a>
       <a href="gallery.html">Gallery</a>
-      <!-- About Us link hidden (current page) -->
+      <a href="faq.html">FAQ</a>
       <a href="usefullinks.html">Useful Links</a>
       <a href="cart.html" class="mini-cart" id="mini-cart">
         Cart
@@ -25,46 +24,41 @@
     </div>
   </header>
 
-  <!-- About Us Content -->
   <div class="about-container">
-<!-- About Us Content -->
-<div class="about-container">
-  <h2>Our Story</h2>
-  <p>
-    JGV3D is a small, independent guitar company based in Somerset, Ohio. Founded in 2017,
-    the shop began as a summer project during school and grew from a simple idea — to try
-    something different while building instruments that are practical, lightweight, and
-    built to be played.
-  </p>
-  <img src="images/our-shop.jpg" alt="JGV3D workshop in Somerset, Ohio">
-  <p>
-    With experience building traditional wooden guitars, JGV3D uses 3D printing where it
-    makes sense: guitar and bass bodies. Necks, hardware, and electronics remain wood and
-    metal components, keeping the feel and reliability musicians expect while allowing
-    greater flexibility in body design.
-  </p>
-  <p>
-    JGV3D produces electric guitar and bass bodies made from PETG or PLA+, weighing
-    approximately 3.4 lbs. Most bodies are made to order and can be customized to fit the
-    player, including pickup configurations, wiring channels, routing adjustments, and
-    custom patterns or shapes. Select models are kept in stock when available, with clear
-    availability shown throughout the site.
-  </p>
-  <p>
-    These bodies are designed for players who value comfort and balance, especially
-    musicians who play standing, those looking to reduce overall instrument weight, or
-    anyone interested in something outside of traditional body designs. The focus remains
-    simple: build reliable tools for musicians and let the work speak for itself.
-  </p>
-</div>
+    <h2>Our Story</h2>
+    <p>
+      JGV3D is a small, independent guitar company based in Somerset, Ohio. Founded in 2017,
+      the shop began as a summer project during school and grew from a simple idea — to try
+      something different while building instruments that are practical, lightweight, and
+      built to be played.
+    </p>
+    <img src="images/our-shop.jpg" alt="JGV3D workshop in Somerset, Ohio">
+    <p>
+      With experience building traditional wooden guitars, JGV3D uses 3D printing where it
+      makes sense: guitar and bass bodies. Necks, hardware, and electronics remain wood and
+      metal components, keeping the feel and reliability musicians expect while allowing
+      greater flexibility in body design.
+    </p>
+    <p>
+      JGV3D produces electric guitar and bass bodies made from PETG or PLA+, weighing
+      approximately 3.4 lbs. Most bodies are made to order and can be customized to fit the
+      player, including pickup configurations, wiring channels, routing adjustments, and
+      custom patterns or shapes. Select models are kept in stock when available, with clear
+      availability shown throughout the site.
+    </p>
+    <p>
+      These bodies are designed for players who value comfort and balance, especially
+      musicians who play standing, those looking to reduce overall instrument weight, or
+      anyone interested in something outside of traditional body designs. The focus remains
+      simple: build reliable tools for musicians and let the work speak for itself.
+    </p>
   </div>
-  
+
   <script>
-    // Update mini-cart count
     function updateMiniCart() {
       try {
         const cart = JSON.parse(localStorage.getItem('jgv3d_cart')) || [];
-        const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+        const totalItems = cart.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
         const miniCartCount = document.getElementById('mini-cart-count');
         if (miniCartCount) {
           miniCartCount.textContent = totalItems;
@@ -75,5 +69,4 @@
     updateMiniCart();
   </script>
 </body>
-
 </html>
