@@ -1127,7 +1127,8 @@ footer a:hover {
   row-gap: 10px;
 }
 
-.orders-page .header-buttons a {
+.orders-page .header-buttons a,
+.orders-page .header-buttons button {
   font-size: 0.95em;
 }
 
