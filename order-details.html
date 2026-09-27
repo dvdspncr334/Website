@@ -40,9 +40,28 @@
       'Completed': 'status-completed'
     };
 
+    function createOrderDetailKey() {
+      return `jgv3d-order-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
     function loadOrders() {
       try {
-        return JSON.parse(localStorage.getItem(ORDERS_KEY)) || [];
+        const parsed = JSON.parse(localStorage.getItem(ORDERS_KEY)) || [];
+        let didChange = false;
+        const orders = parsed.map(order => {
+          if (!order || typeof order !== 'object') {
+            return order;
+          }
+          if (order.detailKey) {
+            return order;
+          }
+          didChange = true;
+          return Object.assign({}, order, { detailKey: createOrderDetailKey() });
+        });
+        if (didChange) {
+          localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+        }
+        return orders;
       } catch (e) {
         return [];
       }
@@ -91,10 +110,7 @@
 
     function getOrderReference() {
       const params = new URLSearchParams(window.location.search);
-      return {
-        orderId: params.get('id') || '',
-        orderIndex: params.get('index')
-      };
+      return params.get('id') || '';
     }
 
     function renderNotFound(orderId) {
@@ -195,30 +211,23 @@
     }
 
     function renderOrderDetails() {
-      const { orderId, orderIndex } = getOrderReference();
-      if (!orderId && orderIndex === null) {
+      const orderId = getOrderReference();
+      if (!orderId) {
         renderNotFound('missing order reference');
         return;
       }
 
       const orders = loadOrders();
-      const parsedIndex = Number(orderIndex);
-      let order = null;
-      const hasOrderId = Boolean(orderId);
-
-      if (orderIndex !== null && Number.isInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < orders.length) {
-        const indexedOrder = orders[parsedIndex];
-        if (!hasOrderId || String(indexedOrder && indexedOrder.id) === orderId) {
-          order = indexedOrder;
+      let order = orders.find(entry => entry && String(entry.detailKey) === orderId);
+      if (!order) {
+        const legacyMatches = orders.filter(entry => entry && String(entry.id) === orderId);
+        if (legacyMatches.length === 1) {
+          order = legacyMatches[0];
         }
       }
 
-      if (!order && hasOrderId) {
-        order = orders.find(entry => entry && String(entry.id) === orderId);
-      }
-
       if (!order) {
-        renderNotFound(orderId || `index ${orderIndex}`);
+        renderNotFound(orderId);
         return;
       }
 

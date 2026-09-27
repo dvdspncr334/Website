@@ -223,6 +223,7 @@
       const now = new Date();
       const order = {
         id: 'JGV-' + now.getTime().toString().slice(-8),
+        detailKey: 'jgv3d-order-' + now.getTime() + '-' + Math.random().toString(36).slice(2, 8),
         date: now.toISOString(),
         status: 'In Queue',
         items: cart.map(item => ({

@@ -40,9 +40,28 @@
       'Completed': 'status-completed'
     };
 
+    function createOrderDetailKey() {
+      return `jgv3d-order-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    }
+
     function loadOrders() {
       try {
-        return JSON.parse(localStorage.getItem(ORDERS_KEY)) || [];
+        const parsed = JSON.parse(localStorage.getItem(ORDERS_KEY)) || [];
+        let didChange = false;
+        const orders = parsed.map(order => {
+          if (!order || typeof order !== 'object') {
+            return order;
+          }
+          if (order.detailKey) {
+            return order;
+          }
+          didChange = true;
+          return Object.assign({}, order, { detailKey: createOrderDetailKey() });
+        });
+        if (didChange) {
+          localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+        }
+        return orders;
       } catch (e) {
         return [];
       }
@@ -101,20 +120,21 @@
       return `status-${safeOrderId}-${index}`;
     }
 
-    function updateOrderStatus(orderIndex, nextStatus) {
+    function updateOrderStatus(detailKey, nextStatus) {
       const orders = loadOrders();
-      if (orderIndex < 0 || orderIndex >= orders.length) return;
-      const updated = orders.slice();
-      updated[orderIndex] = Object.assign({}, updated[orderIndex], { status: nextStatus });
+      const updated = orders.map(order => {
+        if (!order || order.detailKey !== detailKey) {
+          return order;
+        }
+        return Object.assign({}, order, { status: nextStatus });
+      });
       saveOrders(updated);
       renderOrders();
     }
 
     function renderOrders() {
       const list = document.getElementById('orders-list');
-      const orders = loadOrders()
-        .map((order, storageIndex) => ({ order, storageIndex }))
-        .sort((a, b) => new Date(b.order.date) - new Date(a.order.date));
+      const orders = loadOrders().slice().sort((a, b) => new Date(b.date) - new Date(a.date));
       list.innerHTML = '';
 
       if (!orders.length) {
@@ -128,7 +148,7 @@
         return;
       }
 
-      orders.forEach(({ order, storageIndex }, index) => {
+      orders.forEach((order, index) => {
         const items = Array.isArray(order.items) ? order.items.map(normalizeItem) : [];
         const status = ORDER_STATUSES.includes(order.status) ? order.status : 'In Queue';
         const statusClass = STATUS_CLASSES[status] || 'status-queued';
@@ -137,9 +157,9 @@
           ? order.total
           : items.reduce((sum, item) => sum + item.price * item.qty, 0);
         const formattedDate = formatOrderDate(order.date);
-        const statusControlId = getStatusControlId(order.id, index);
-        const hasOrderId = order.id !== undefined && order.id !== null && String(order.id).trim() !== '';
-        const orderDetailsHref = `order-details.html?index=${encodeURIComponent(String(storageIndex))}${hasOrderId ? `&id=${encodeURIComponent(String(order.id))}` : ''}`;
+        const statusControlId = getStatusControlId(order.detailKey || order.id, index);
+        const statusHelpId = `${statusControlId}-help`;
+        const orderDetailsHref = `order-details.html?id=${encodeURIComponent(String(order.detailKey || ''))}`;
         const previewItems = items.slice(0, 2).map(item => {
           const parts = getTitleParts(item.title);
           const imagePath = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
@@ -190,12 +210,12 @@
 
           <div class="order-card-footer">
             <a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>
-            <form class="order-status-form" data-order-index="${storageIndex}">
+            <form class="order-status-form" data-order-key="${escapeHTML(order.detailKey || '')}">
               <label for="${escapeHTML(statusControlId)}">Demo status</label>
-              <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-label="Demo status for order ${escapeHTML(order.id || '')}">
+              <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-label="Demo status for order ${escapeHTML(order.id || '')}" aria-describedby="${escapeHTML(statusHelpId)}">
                 ${ORDER_STATUSES.map(option => `<option value="${escapeHTML(option)}" ${option === status ? 'selected' : ''}>${escapeHTML(option)}</option>`).join('')}
               </select>
-              <p class="order-status-help">Temporary manual control while backend/printer sync is not connected yet.</p>
+              <p class="order-status-help" id="${escapeHTML(statusHelpId)}">Temporary manual control while backend/printer sync is not connected yet.</p>
             </form>
           </div>
         `;
@@ -203,7 +223,7 @@
         const select = card.querySelector('.order-status-select');
         if (select) {
           select.addEventListener('change', (event) => {
-            updateOrderStatus(storageIndex, event.target.value);
+            updateOrderStatus(order.detailKey, event.target.value);
           });
         }
 
