@@ -226,7 +226,7 @@
 
           <div class="order-card-footer">
             <a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>
-            <div class="order-status-form" data-order-key="${escapeHTML(order.detailKey || '')}">
+            <div class="order-status-form" data-order-key="${escapeHTML(order.detailKey || '')}" role="group" aria-label="Demo status controls for order ${escapeHTML(order.id || 'this order')}">
               <label for="${escapeHTML(statusControlId)}">Demo status</label>
               <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-label="Demo status for order ${escapeHTML(order.id || '')}" aria-describedby="${escapeHTML(statusHelpId)}">
                 ${ORDER_STATUSES.map(option => `<option value="${escapeHTML(option)}" ${option === status ? 'selected' : ''}>${escapeHTML(option)}</option>`).join('')}
