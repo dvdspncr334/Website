@@ -84,3 +84,10 @@
 - Related items prioritize same subcategory, then same category
 - Mini-cart count updates immediately after adding items
 - Stratocaster HSS listings still awaiting real uploaded body images: `strat-hss-cannacaster`, `strat-hss-floweroflife`, `strat-hss-spiralgyroid`, `strat-hss-cts`, `strat-hss-bubbles`, `strat-hss-voronoi`. Their repo folders/assets do not exist yet, so they currently use `images/placeholder.png` until those pattern images are added under their respective `images/Stratocaster/.../HSS/` folders.
+
+## Orders Removal Testing Notes
+- Remove one of multiple orders: create at least two orders, remove one from `orders.html`, and confirm only the selected card disappears while other cards remain.
+- Duplicate display IDs: with two orders sharing the same visible order number but different `detailKey`, remove one card and verify only that specific card is deleted.
+- Canceled confirmation: click **Remove Order**, cancel the dialog, and confirm the list and storage are unchanged.
+- Last-order empty state: remove the final remaining order and verify the existing "No orders yet" empty state renders immediately.
+- Storage failure handling: temporarily force `localStorage.setItem` to throw, confirm an error alert appears, and confirm the selected card remains visible because the removal was not saved.

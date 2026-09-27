@@ -54,8 +54,16 @@
       }
     }
 
-    function saveOrders(orders) {
-      localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+    function saveOrders(orders, failureMessage) {
+      try {
+        localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+        return true;
+      } catch (e) {
+        if (failureMessage) {
+          window.alert(failureMessage);
+        }
+        return false;
+      }
     }
 
     function normalizeItem(item) {
@@ -127,8 +135,41 @@
         }
         return Object.assign({}, order, { status: nextStatus });
       });
-      saveOrders(updated);
-      renderOrders();
+      if (saveOrders(updated)) {
+        renderOrders();
+      }
+    }
+
+    function removeOrder(orderKey, displayOrderId) {
+      if (!orderKey) {
+        window.alert('This local order record is missing its reference and cannot be removed safely.');
+        return;
+      }
+
+      const shownOrderNumber = displayOrderId || 'Unknown';
+      const confirmed = window.confirm(
+        `Remove Order #${shownOrderNumber} from this browser?\n\nThis removes only this locally stored demo order record in this browser. It does not cancel or notify any real backend, printer, payment, or fulfillment system.`
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      const orders = loadOrders();
+      const targetIndex = orders.findIndex(order => order && getOrderLookupKey(order) === orderKey);
+      if (targetIndex < 0) {
+        renderOrders();
+        return;
+      }
+
+      const updated = orders.slice(0, targetIndex).concat(orders.slice(targetIndex + 1));
+      const didSave = saveOrders(
+        updated,
+        `Could not save removal for Order #${shownOrderNumber}. Please try again.`
+      );
+      if (didSave) {
+        renderOrders();
+      }
     }
 
     function renderOrders() {
@@ -213,6 +254,7 @@
             ${canAddressOrder
               ? `<a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>`
               : '<span class="order-card-copy">Order details are unavailable until this local order record has a valid reference.</span>'}
+            <button type="button" class="remove-btn order-remove-btn" ${canAddressOrder ? '' : 'disabled aria-disabled="true"'}>Remove Order</button>
             <fieldset class="order-status-form" data-order-key="${escapeHTML(orderLookupKey)}">
               <legend class="order-status-legend">Demo status for order ${escapeHTML(order.id || 'this order')}</legend>
               <label for="${escapeHTML(statusControlId)}">Demo status</label>
@@ -230,6 +272,13 @@
         if (select && canAddressOrder) {
           select.addEventListener('change', (event) => {
             updateOrderStatus(orderLookupKey, event.target.value);
+          });
+        }
+
+        const removeButton = card.querySelector('.order-remove-btn');
+        if (removeButton && canAddressOrder) {
+          removeButton.addEventListener('click', () => {
+            removeOrder(orderLookupKey, String(order.id || 'Unknown'));
           });
         }
 
