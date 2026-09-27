@@ -201,9 +201,11 @@
         `;
 
         const select = card.querySelector('.order-status-select');
-        select.addEventListener('change', (event) => {
-          updateOrderStatus(storageIndex, event.target.value);
-        });
+        if (select) {
+          select.addEventListener('change', (event) => {
+            updateOrderStatus(storageIndex, event.target.value);
+          });
+        }
 
         list.appendChild(card);
       });
