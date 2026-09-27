@@ -29,6 +29,7 @@
     <div id="order-details-root" class="order-details-root"></div>
   </main>
 
+  <script src="order-utils.js"></script>
   <script>
     const CART_KEY = 'jgv3d_cart';
     const ORDERS_KEY = 'jgv3d_orders';
@@ -40,24 +41,10 @@
       'Completed': 'status-completed'
     };
 
-    function createOrderDetailKey() {
-      return `jgv3d-order-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    }
-
     function loadOrders() {
       try {
         const parsed = JSON.parse(localStorage.getItem(ORDERS_KEY)) || [];
-        let didChange = false;
-        const orders = parsed.map(order => {
-          if (!order || typeof order !== 'object') {
-            return order;
-          }
-          if (order.detailKey) {
-            return order;
-          }
-          didChange = true;
-          return Object.assign({}, order, { detailKey: createOrderDetailKey() });
-        });
+        const { orders, didChange } = window.JGV3DOrderUtils.hydrateOrdersWithDetailKeys(parsed);
         if (didChange) {
           localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
         }
@@ -231,8 +218,8 @@
       let order = orders.find(entry => entry && String(entry.detailKey) === orderId);
       if (!order) {
         const legacyMatches = orders.filter(entry => entry && String(entry.id) === orderId);
-        if (legacyMatches.length === 1) {
-          order = legacyMatches[0];
+        if (legacyMatches.length) {
+          order = legacyMatches.slice().sort((a, b) => new Date(b.date) - new Date(a.date))[0];
         }
       }
 

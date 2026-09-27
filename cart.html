@@ -33,6 +33,7 @@
     <a href="#" class="checkout-btn" id="checkout-btn">Proceed to Checkout</a>
   </div>
 
+  <script src="order-utils.js"></script>
   <script>
     const CART_KEY = 'jgv3d_cart';
     const ORDERS_KEY = 'jgv3d_orders';
@@ -223,7 +224,7 @@
       const now = new Date();
       const order = {
         id: 'JGV-' + now.getTime().toString().slice(-8),
-        detailKey: 'jgv3d-order-' + now.getTime() + '-' + Math.random().toString(36).slice(2, 8),
+        detailKey: window.JGV3DOrderUtils.createOrderDetailKey(),
         date: now.toISOString(),
         status: 'In Queue',
         items: cart.map(item => ({
