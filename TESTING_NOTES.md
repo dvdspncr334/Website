@@ -84,3 +84,23 @@
 - Related items prioritize same subcategory, then same category
 - Mini-cart count updates immediately after adding items
 - Stratocaster HSS listings still awaiting real uploaded body images: `strat-hss-cannacaster`, `strat-hss-floweroflife`, `strat-hss-spiralgyroid`, `strat-hss-cts`, `strat-hss-bubbles`, `strat-hss-voronoi`. Their repo folders/assets do not exist yet, so they currently use `images/placeholder.png` until those pattern images are added under their respective `images/Stratocaster/.../HSS/` folders.
+
+## Orders Page Regression Checklist (localStorage demo flow)
+
+Run these checks after editing `orders.html`, `order-details.html`, or order CSS:
+
+- Create at least two orders via `cart.html` checkout and confirm both render in `orders.html` with:
+  - item previews/images
+  - status controls
+  - details links
+- Add two orders that share the same display `id` but have different `detailKey` values, then remove one:
+  - confirm only the selected order card is removed
+  - confirm the other order with the same display `id` remains
+- Remove an order and validate:
+  - confirmation text warns this is browser-local only
+  - cancel leaves the list unchanged
+  - confirm updates list immediately
+  - removed order `order-details.html?id=<detailKey>` resolves to not found
+- Set the order list to empty and confirm empty-state message + shop link render correctly.
+- Resize to narrow/mobile widths and verify no horizontal overflow, readable controls, and aligned footer actions.
+- In a second tab, modify/remove an order and confirm `orders.html` and `order-details.html` update from the `storage` event.

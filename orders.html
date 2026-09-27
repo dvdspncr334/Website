@@ -6,7 +6,7 @@
   <title>Your Orders | JGV3D Guitar Bodies</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="orders-page">
   <header class="header">
     <h1>Orders</h1>
     <div class="header-buttons">
@@ -26,6 +26,7 @@
   <main class="cart-container">
     <h2>Your Orders</h2>
     <p class="order-page-note"><strong>Demo status control:</strong> Until automated backend or printer synchronization is added, this page includes a manual status selector so you can preview the order lifecycle locally in your browser.</p>
+    <p class="order-page-note"><strong>Demo-only local records:</strong> Removing an order here only deletes this browser's saved mock order record. It does not cancel a real order or notify any backend or printer.</p>
     <div id="orders-list" class="order-list" aria-live="polite"></div>
   </main>
 
@@ -46,7 +47,9 @@
         const parsed = JSON.parse(localStorage.getItem(ORDERS_KEY)) || [];
         const { orders, didChange } = window.JGV3DOrderUtils.hydrateOrdersWithDetailKeys(parsed);
         if (didChange) {
-          localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+          try {
+            localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+          } catch (e) {}
         }
         return orders;
       } catch (e) {
@@ -55,7 +58,12 @@
     }
 
     function saveOrders(orders) {
-      localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+      try {
+        localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+        return true;
+      } catch (e) {
+        return false;
+      }
     }
 
     function normalizeItem(item) {
@@ -127,7 +135,39 @@
         }
         return Object.assign({}, order, { status: nextStatus });
       });
-      saveOrders(updated);
+      if (!saveOrders(updated)) {
+        window.alert('Unable to save status changes in local storage. Please free space and try again.');
+        return;
+      }
+      renderOrders();
+    }
+
+    function removeOrder(orderKey) {
+      if (!orderKey) {
+        return;
+      }
+
+      const orders = loadOrders();
+      const targetOrder = orders.find(order => order && getOrderLookupKey(order) === orderKey);
+      if (!targetOrder) {
+        renderOrders();
+        return;
+      }
+
+      const label = targetOrder.id ? `Order #${targetOrder.id}` : 'this order';
+      const confirmed = window.confirm(
+        `Remove ${label} from this browser only?\n\nThis only deletes the local demo record on this device/browser and does not cancel any real order or notify a backend/printer.`
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      const nextOrders = orders.filter(order => !order || getOrderLookupKey(order) !== orderKey);
+      if (!saveOrders(nextOrders)) {
+        window.alert(`Could not remove ${label} because this browser could not update local storage.`);
+        return;
+      }
+
       renderOrders();
     }
 
@@ -213,14 +253,17 @@
             ${canAddressOrder
               ? `<a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>`
               : '<span class="order-card-copy">Order details are unavailable until this local order record has a valid reference.</span>'}
-            <fieldset class="order-status-form" data-order-key="${escapeHTML(orderLookupKey)}">
-              <legend class="order-status-legend">Demo status for order ${escapeHTML(order.id || 'this order')}</legend>
-              <label for="${escapeHTML(statusControlId)}">Demo status</label>
-              <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-describedby="${escapeHTML(statusHelpId)}" ${canAddressOrder ? '' : 'disabled aria-disabled="true"'}>
-                ${ORDER_STATUSES.map(option => `<option value="${escapeHTML(option)}" ${option === status ? 'selected' : ''}>${escapeHTML(option)}</option>`).join('')}
-              </select>
-              <p class="order-status-help" id="${escapeHTML(statusHelpId)}">${canAddressOrder ? 'Temporary manual control while backend/printer sync is not connected yet.' : 'This local order record needs a valid reference before its demo status can be updated.'}</p>
-            </fieldset>
+            <div class="order-card-actions">
+              <fieldset class="order-status-form" data-order-key="${escapeHTML(orderLookupKey)}">
+                <legend class="order-status-legend">Demo status for order ${escapeHTML(order.id || 'this order')}</legend>
+                <label for="${escapeHTML(statusControlId)}">Demo status</label>
+                <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-describedby="${escapeHTML(statusHelpId)}" ${canAddressOrder ? '' : 'disabled aria-disabled="true"'}>
+                  ${ORDER_STATUSES.map(option => `<option value="${escapeHTML(option)}" ${option === status ? 'selected' : ''}>${escapeHTML(option)}</option>`).join('')}
+                </select>
+                <p class="order-status-help" id="${escapeHTML(statusHelpId)}">${canAddressOrder ? 'Temporary manual control while backend/printer sync is not connected yet.' : 'This local order record needs a valid reference before its demo status can be updated.'}</p>
+              </fieldset>
+              <button type="button" class="order-remove-btn" data-order-key="${escapeHTML(orderLookupKey)}" ${canAddressOrder ? '' : 'disabled aria-disabled="true"'}>Remove order</button>
+            </div>
           </div>
         `;
 
@@ -230,6 +273,13 @@
         if (select && canAddressOrder) {
           select.addEventListener('change', (event) => {
             updateOrderStatus(orderLookupKey, event.target.value);
+          });
+        }
+
+        const removeButton = card.querySelector('.order-remove-btn');
+        if (removeButton && canAddressOrder) {
+          removeButton.addEventListener('click', () => {
+            removeOrder(orderLookupKey);
           });
         }
 

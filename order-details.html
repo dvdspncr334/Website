@@ -6,7 +6,7 @@
   <title>Order Details | JGV3D Guitar Bodies</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="orders-page">
   <header class="header">
     <h1>Order Details</h1>
     <div class="header-buttons">
@@ -46,7 +46,9 @@
         const parsed = JSON.parse(localStorage.getItem(ORDERS_KEY)) || [];
         const { orders, didChange } = window.JGV3DOrderUtils.hydrateOrdersWithDetailKeys(parsed);
         if (didChange) {
-          localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+          try {
+            localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+          } catch (e) {}
         }
         return orders;
       } catch (e) {
