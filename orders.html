@@ -139,6 +139,7 @@
         const formattedDate = formatOrderDate(order.date);
         const statusControlId = getStatusControlId(order.id, index);
         const hasOrderId = order.id !== undefined && order.id !== null && String(order.id).trim() !== '';
+        const orderDetailsHref = `order-details.html?index=${encodeURIComponent(String(storageIndex))}${hasOrderId ? `&id=${encodeURIComponent(String(order.id))}` : ''}`;
         const previewItems = items.slice(0, 2).map(item => {
           const parts = getTitleParts(item.title);
           const imagePath = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
@@ -188,9 +189,7 @@
           </div>
 
           <div class="order-card-footer">
-            ${hasOrderId
-              ? `<a class="order-detail-link" href="order-details.html?id=${encodeURIComponent(String(order.id))}">View Order Details</a>`
-              : '<span class="order-card-copy">Order details link unavailable for older local orders without an order number.</span>'}
+            <a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>
             <form class="order-status-form" data-order-index="${storageIndex}">
               <label for="${escapeHTML(statusControlId)}">Demo status</label>
               <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-label="Demo status for order ${escapeHTML(order.id || '')}">

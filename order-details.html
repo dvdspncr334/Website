@@ -89,9 +89,12 @@
       };
     }
 
-    function getOrderId() {
+    function getOrderReference() {
       const params = new URLSearchParams(window.location.search);
-      return params.get('id') || '';
+      return {
+        orderId: params.get('id') || '',
+        orderIndex: params.get('index')
+      };
     }
 
     function renderNotFound(orderId) {
@@ -192,15 +195,26 @@
     }
 
     function renderOrderDetails() {
-      const orderId = getOrderId();
-      if (!orderId) {
-        renderNotFound('missing order id');
+      const { orderId, orderIndex } = getOrderReference();
+      if (!orderId && orderIndex === null) {
+        renderNotFound('missing order reference');
         return;
       }
 
-      const order = loadOrders().find(entry => entry && String(entry.id) === orderId);
+      const orders = loadOrders();
+      const parsedIndex = Number(orderIndex);
+      let order = null;
+
+      if (orderIndex !== null && Number.isInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < orders.length) {
+        order = orders[parsedIndex];
+      }
+
+      if (!order && orderId) {
+        order = orders.find(entry => entry && String(entry.id) === orderId);
+      }
+
       if (!order) {
-        renderNotFound(orderId);
+        renderNotFound(orderId || `index ${orderIndex}`);
         return;
       }
 
