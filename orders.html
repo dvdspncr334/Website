@@ -151,14 +151,14 @@
         return;
       }
 
-      const updatedOrders = latestOrders.slice();
-      updatedOrders.splice(targetIndex, 1);
       const matchingBefore = latestOrders.filter(order => order && getOrderLookupKey(order) === orderKey).length;
       if (matchingBefore !== 1) {
         window.alert('Unable to safely delete this local order record because its reference is duplicated.');
         renderOrders();
         return;
       }
+      const updatedOrders = latestOrders.slice();
+      updatedOrders.splice(targetIndex, 1);
 
       try {
         saveOrders(updatedOrders);
