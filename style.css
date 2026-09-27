@@ -651,7 +651,6 @@ footer a:hover {
   accent-color: #e67e22;
   cursor: pointer;
   flex-shrink: 0;
-  color-scheme: dark;
 }
 
 .cart-selection-controls input[type="checkbox"]:hover,
