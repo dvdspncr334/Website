@@ -718,7 +718,7 @@ footer a:hover {
   }
 }
 
-@supports (not (appearance: none)) and (-webkit-appearance: none) {
+@supports (not (appearance: none)) and ((-webkit-appearance: none)) {
   .cart-selection-controls input[type="checkbox"],
   .cart-item-select input[type="checkbox"] {
     -webkit-appearance: none;
