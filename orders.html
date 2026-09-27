@@ -101,19 +101,20 @@
       return `status-${safeOrderId}-${index}`;
     }
 
-    function updateOrderStatus(orderId, nextStatus) {
+    function updateOrderStatus(orderIndex, nextStatus) {
       const orders = loadOrders();
-      const updated = orders.map(order => {
-        if (order.id !== orderId) return order;
-        return Object.assign({}, order, { status: nextStatus });
-      });
+      if (orderIndex < 0 || orderIndex >= orders.length) return;
+      const updated = orders.slice();
+      updated[orderIndex] = Object.assign({}, updated[orderIndex], { status: nextStatus });
       saveOrders(updated);
       renderOrders();
     }
 
     function renderOrders() {
       const list = document.getElementById('orders-list');
-      const orders = loadOrders().slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+      const orders = loadOrders()
+        .map((order, storageIndex) => ({ order, storageIndex }))
+        .sort((a, b) => new Date(b.order.date) - new Date(a.order.date));
       list.innerHTML = '';
 
       if (!orders.length) {
@@ -127,7 +128,7 @@
         return;
       }
 
-      orders.forEach((order, index) => {
+      orders.forEach(({ order, storageIndex }, index) => {
         const items = Array.isArray(order.items) ? order.items.map(normalizeItem) : [];
         const status = ORDER_STATUSES.includes(order.status) ? order.status : 'In Queue';
         const statusClass = STATUS_CLASSES[status] || 'status-queued';
@@ -137,6 +138,7 @@
           : items.reduce((sum, item) => sum + item.price * item.qty, 0);
         const formattedDate = formatOrderDate(order.date);
         const statusControlId = getStatusControlId(order.id, index);
+        const hasOrderId = order.id !== undefined && order.id !== null && String(order.id).trim() !== '';
         const previewItems = items.slice(0, 2).map(item => {
           const parts = getTitleParts(item.title);
           const imagePath = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
@@ -186,8 +188,10 @@
           </div>
 
           <div class="order-card-footer">
-            <a class="order-detail-link" href="order-details.html?id=${encodeURIComponent(order.id || '')}">View Order Details</a>
-            <form class="order-status-form" data-order-id="${escapeHTML(order.id || '')}">
+            ${hasOrderId
+              ? `<a class="order-detail-link" href="order-details.html?id=${encodeURIComponent(String(order.id))}">View Order Details</a>`
+              : '<span class="order-card-copy">Order details link unavailable for older local orders without an order number.</span>'}
+            <form class="order-status-form" data-order-index="${storageIndex}">
               <label for="${escapeHTML(statusControlId)}">Demo status</label>
               <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-label="Demo status for order ${escapeHTML(order.id || '')}">
                 ${ORDER_STATUSES.map(option => `<option value="${escapeHTML(option)}" ${option === status ? 'selected' : ''}>${escapeHTML(option)}</option>`).join('')}
@@ -199,7 +203,7 @@
 
         const select = card.querySelector('.order-status-select');
         select.addEventListener('change', (event) => {
-          updateOrderStatus(order.id, event.target.value);
+          updateOrderStatus(storageIndex, event.target.value);
         });
 
         list.appendChild(card);

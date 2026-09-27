@@ -198,7 +198,7 @@
         return;
       }
 
-      const order = loadOrders().find(entry => entry && entry.id === orderId);
+      const order = loadOrders().find(entry => entry && String(entry.id) === orderId);
       if (!order) {
         renderNotFound(orderId);
         return;
