@@ -655,6 +655,7 @@ footer a:hover {
 
 .cart-selection-controls input[type="checkbox"]:hover,
 .cart-item-select input[type="checkbox"]:hover {
+  border-color: #f0b27a;
   box-shadow: 0 0 0 2px rgba(240, 178, 122, 0.25);
 }
 
@@ -664,7 +665,7 @@ footer a:hover {
   outline-offset: 2px;
 }
 
-@supports (appearance: none) {
+@supports ((appearance: none) or (-webkit-appearance: none)) {
   .cart-selection-controls input[type="checkbox"],
   .cart-item-select input[type="checkbox"] {
     appearance: none;
