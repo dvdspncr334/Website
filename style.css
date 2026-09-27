@@ -998,7 +998,8 @@ footer a:hover {
 }
 
 .order-remove-btn:focus-visible,
-.order-status-select:focus-visible {
+.order-status-select:focus-visible,
+.order-detail-link:focus-visible {
   outline: 2px solid #f0b27a;
   outline-offset: 2px;
 }

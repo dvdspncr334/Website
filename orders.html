@@ -197,7 +197,8 @@
           : items.reduce((sum, item) => sum + item.price * item.qty, 0);
         const formattedDate = formatOrderDate(order.date);
         const orderLookupKey = getOrderLookupKey(order);
-        const canAddressOrder = Boolean(orderLookupKey);
+        const canViewDetails = Boolean(orderLookupKey);
+        const canRemoveOrder = Boolean(orderLookupKey);
         const statusControlId = getStatusControlId(orderLookupKey, index);
         const statusHelpId = `${statusControlId}-help`;
         const orderDetailsHref = `order-details.html?id=${encodeURIComponent(orderLookupKey)}`;
@@ -250,19 +251,19 @@
           </div>
 
           <div class="order-card-footer">
-            ${canAddressOrder
+            ${canViewDetails
               ? `<a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>`
               : '<span class="order-card-copy">Order details are unavailable until this local order record has a valid reference.</span>'}
             <div class="order-card-actions">
               <fieldset class="order-status-form" data-order-key="${escapeHTML(orderLookupKey)}">
                 <legend class="order-status-legend">Demo status for order ${escapeHTML(order.id || 'this order')}</legend>
                 <label for="${escapeHTML(statusControlId)}">Demo status</label>
-                <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-describedby="${escapeHTML(statusHelpId)}" ${canAddressOrder ? '' : 'disabled aria-disabled="true"'}>
+                <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-describedby="${escapeHTML(statusHelpId)}" ${canViewDetails ? '' : 'disabled aria-disabled="true"'}>
                   ${ORDER_STATUSES.map(option => `<option value="${escapeHTML(option)}" ${option === status ? 'selected' : ''}>${escapeHTML(option)}</option>`).join('')}
                 </select>
-                <p class="order-status-help" id="${escapeHTML(statusHelpId)}">${canAddressOrder ? 'Temporary manual control while backend/printer sync is not connected yet.' : 'This local order record needs a valid reference before its demo status can be updated.'}</p>
+                <p class="order-status-help" id="${escapeHTML(statusHelpId)}">${canViewDetails ? 'Temporary manual control while backend/printer sync is not connected yet.' : 'This local order record needs a valid reference before its demo status can be updated.'}</p>
               </fieldset>
-              <button type="button" class="order-remove-btn" data-order-key="${escapeHTML(orderLookupKey)}" ${canAddressOrder ? '' : 'disabled aria-disabled="true"'}>Remove order</button>
+              <button type="button" class="order-remove-btn" data-order-key="${escapeHTML(orderLookupKey)}" ${canRemoveOrder ? '' : 'disabled aria-disabled="true"'}>Remove order</button>
             </div>
           </div>
         `;
@@ -270,14 +271,14 @@
         attachImageFallbacks(card);
 
         const select = card.querySelector('.order-status-select');
-        if (select && canAddressOrder) {
+        if (select && canViewDetails) {
           select.addEventListener('change', (event) => {
             updateOrderStatus(orderLookupKey, event.target.value);
           });
         }
 
         const removeButton = card.querySelector('.order-remove-btn');
-        if (removeButton && canAddressOrder) {
+        if (removeButton && canRemoveOrder) {
           removeButton.addEventListener('click', () => {
             removeOrder(orderLookupKey);
           });
