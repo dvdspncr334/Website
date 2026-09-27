@@ -665,7 +665,7 @@ footer a:hover {
   outline-offset: 2px;
 }
 
-@supports ((appearance: none) or (-webkit-appearance: none)) {
+@supports ((appearance: none) and (selector(input[type="checkbox"]:checked))) {
   .cart-selection-controls input[type="checkbox"],
   .cart-item-select input[type="checkbox"] {
     appearance: none;
