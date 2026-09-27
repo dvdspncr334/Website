@@ -668,6 +668,8 @@ footer a:hover {
   .cart-selection-controls input[type="checkbox"],
   .cart-item-select input[type="checkbox"] {
     appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
     background: #2a2a2a;
     border: 2px solid #e67e22;
     border-radius: 4px;
