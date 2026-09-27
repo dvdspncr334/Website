@@ -655,8 +655,8 @@ footer a:hover {
 
 .cart-selection-controls input[type="checkbox"]:hover,
 .cart-item-select input[type="checkbox"]:hover {
-  border-color: #f0b27a;
-  box-shadow: 0 0 0 2px rgba(240, 178, 122, 0.25);
+  outline: 1px solid rgba(240, 178, 122, 0.7);
+  outline-offset: 1px;
 }
 
 .cart-selection-controls input[type="checkbox"]:focus-visible,
@@ -682,6 +682,7 @@ footer a:hover {
   .cart-item-select input[type="checkbox"]:hover {
     border-color: #f0b27a;
     box-shadow: 0 0 0 2px rgba(240, 178, 122, 0.18);
+    outline: none;
   }
 
   .cart-selection-controls input[type="checkbox"]:checked,
