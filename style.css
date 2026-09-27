@@ -117,11 +117,17 @@ header h1 {
 }
 
 .faq-item summary {
+  display: list-item;
+  list-style-position: inside;
   cursor: pointer;
   padding: 14px 16px;
   color: #fff;
   font-weight: 600;
   transition: background 0.2s ease, color 0.2s ease;
+}
+
+.faq-item summary::-webkit-details-marker {
+  display: inline-block;
 }
 
 .faq-item summary:hover {
