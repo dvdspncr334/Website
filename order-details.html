@@ -204,12 +204,16 @@
       const orders = loadOrders();
       const parsedIndex = Number(orderIndex);
       let order = null;
+      const hasOrderId = Boolean(orderId);
 
       if (orderIndex !== null && Number.isInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < orders.length) {
-        order = orders[parsedIndex];
+        const indexedOrder = orders[parsedIndex];
+        if (!hasOrderId || String(indexedOrder && indexedOrder.id) === orderId) {
+          order = indexedOrder;
+        }
       }
 
-      if (!order && orderId) {
+      if (!order && hasOrderId) {
         order = orders.find(entry => entry && String(entry.id) === orderId);
       }
 
