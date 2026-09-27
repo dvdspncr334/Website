@@ -120,10 +120,17 @@
       return `status-${safeOrderId}-${index}`;
     }
 
-    function updateOrderStatus(detailKey, nextStatus) {
+    function getOrderLookupKey(order) {
+      if (!order || typeof order !== 'object') {
+        return '';
+      }
+      return String(order.detailKey || order.id || '');
+    }
+
+    function updateOrderStatus(orderKey, nextStatus) {
       const orders = loadOrders();
       const updated = orders.map(order => {
-        if (!order || order.detailKey !== detailKey) {
+        if (!order || getOrderLookupKey(order) !== orderKey) {
           return order;
         }
         return Object.assign({}, order, { status: nextStatus });
@@ -157,7 +164,8 @@
           ? order.total
           : items.reduce((sum, item) => sum + item.price * item.qty, 0);
         const formattedDate = formatOrderDate(order.date);
-        const statusControlId = getStatusControlId(order.detailKey || order.id, index);
+        const orderLookupKey = getOrderLookupKey(order);
+        const statusControlId = getStatusControlId(orderLookupKey, index);
         const statusHelpId = `${statusControlId}-help`;
         const orderDetailsHref = `order-details.html?id=${encodeURIComponent(String(order.detailKey || ''))}`;
         const previewItems = items.slice(0, 2).map(item => {
@@ -223,7 +231,7 @@
         const select = card.querySelector('.order-status-select');
         if (select) {
           select.addEventListener('change', (event) => {
-            updateOrderStatus(order.detailKey, event.target.value);
+            updateOrderStatus(orderLookupKey, event.target.value);
           });
         }
 

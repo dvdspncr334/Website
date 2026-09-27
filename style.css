@@ -970,6 +970,10 @@ footer a:hover {
   padding: 20px;
 }
 
+.order-details-root {
+  margin-top: 16px;
+}
+
 .order-progress {
   margin: 24px 0;
 }
@@ -1049,7 +1053,7 @@ footer a:hover {
 }
 
 @media (max-width: 760px) {
-  header {
+  .header {
     flex-direction: column;
     gap: 16px;
     padding: 20px;
