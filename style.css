@@ -143,6 +143,17 @@ header h1 {
     color: CanvasText;
   }
 
+  .faq-item[open] {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .faq-item[open] summary {
+    border-bottom-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
 }
 
 .faq-item p {
