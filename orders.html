@@ -127,6 +127,14 @@
       return String(order.detailKey || order.id || '');
     }
 
+    function attachImageFallbacks(container) {
+      container.querySelectorAll('img').forEach(img => {
+        img.addEventListener('error', () => {
+          img.src = 'images/placeholder.png';
+        }, { once: true });
+      });
+    }
+
     function updateOrderStatus(orderKey, nextStatus) {
       const orders = loadOrders();
       const updated = orders.map(order => {
@@ -173,7 +181,7 @@
           const imagePath = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
           return `
             <article class="order-preview-item">
-              <img src="${escapeHTML(imagePath)}" alt="${escapeHTML(parts.base)}" onerror="this.src='images/placeholder.png'">
+              <img src="${escapeHTML(imagePath)}" alt="${escapeHTML(parts.base)}">
               <div class="order-preview-content">
                 <h3>${escapeHTML(parts.base)}</h3>
                 ${parts.details ? `<p class="order-item-options"><strong>Selected options:</strong> ${escapeHTML(parts.details)}</p>` : ''}
@@ -218,15 +226,17 @@
 
           <div class="order-card-footer">
             <a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>
-            <form class="order-status-form" data-order-key="${escapeHTML(order.detailKey || '')}">
+            <div class="order-status-form" data-order-key="${escapeHTML(order.detailKey || '')}">
               <label for="${escapeHTML(statusControlId)}">Demo status</label>
               <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-label="Demo status for order ${escapeHTML(order.id || '')}" aria-describedby="${escapeHTML(statusHelpId)}">
                 ${ORDER_STATUSES.map(option => `<option value="${escapeHTML(option)}" ${option === status ? 'selected' : ''}>${escapeHTML(option)}</option>`).join('')}
               </select>
               <p class="order-status-help" id="${escapeHTML(statusHelpId)}">Temporary manual control while backend/printer sync is not connected yet.</p>
-            </form>
+            </div>
           </div>
         `;
+
+        attachImageFallbacks(card);
 
         const select = card.querySelector('.order-status-select');
         if (select) {

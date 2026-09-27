@@ -108,6 +108,14 @@
       };
     }
 
+    function attachImageFallbacks(container) {
+      container.querySelectorAll('img').forEach(img => {
+        img.addEventListener('error', () => {
+          img.src = 'images/placeholder.png';
+        }, { once: true });
+      });
+    }
+
     function getOrderReference() {
       const params = new URLSearchParams(window.location.search);
       return params.get('id') || '';
@@ -151,7 +159,7 @@
         const imagePath = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
         return `
           <article class="order-detail-item">
-            <img src="${escapeHTML(imagePath)}" alt="${escapeHTML(parts.base)}" onerror="this.src='images/placeholder.png'">
+            <img src="${escapeHTML(imagePath)}" alt="${escapeHTML(parts.base)}">
             <div class="order-item-content">
               <h3>${escapeHTML(parts.base)}</h3>
               <p class="order-item-meta"><strong>Full item:</strong> ${escapeHTML(item.title)}</p>
@@ -208,6 +216,8 @@
           </section>
         </section>
       `;
+
+      attachImageFallbacks(root);
     }
 
     function renderOrderDetails() {
