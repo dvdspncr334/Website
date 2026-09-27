@@ -17,7 +17,7 @@
       <a href="about.html">About Us</a>
       <a href="usefullinks.html">Useful Links</a>
       <!-- Cart link hidden (current page) -->
-      <a href="orders.html">Orders</a>
+      <a href="orders.html">My Orders</a>
       <a href="login.html">Login</a>
     </div>
   </header>
@@ -33,6 +33,7 @@
     <a href="#" class="checkout-btn" id="checkout-btn">Proceed to Checkout</a>
   </div>
 
+  <script src="order-utils.js"></script>
   <script>
     const CART_KEY = 'jgv3d_cart';
     const ORDERS_KEY = 'jgv3d_orders';
@@ -223,6 +224,7 @@
       const now = new Date();
       const order = {
         id: 'JGV-' + now.getTime().toString().slice(-8),
+        detailKey: window.JGV3DOrderUtils.createOrderDetailKey(),
         date: now.toISOString(),
         status: 'In Queue',
         items: cart.map(item => ({

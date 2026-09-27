@@ -5,25 +5,8 @@
   <link rel="icon" type="image/x-icon" href="images/favicon.ico">
   <title>Your Orders | JGV3D Guitar Bodies</title>
   <link rel="stylesheet" href="style.css">
-  <style>
-    .order-card { background:#2a2a2a; border:1px solid #444; border-radius:8px; padding:16px; margin-bottom:20px; }
-    .order-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-bottom:1px solid #444; padding-bottom:10px; margin-bottom:6px; }
-    .order-id { color:#e67e22; font-weight:bold; font-size:1.1em; }
-    .order-date { color:#aaa; font-size:0.9em; }
-    .order-status { padding:5px 12px; border-radius:4px; font-size:0.8em; font-weight:bold; text-transform:uppercase; color:#fff; }
-    .status-queued { background:#6c757d; }
-    .status-in-progress { background:#e67e22; }
-    .status-shipped { background:#17a2b8; }
-    .status-completed { background:#28a745; }
-    .order-options { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
-    .order-option { background:#444; border:1px solid #555; border-radius:4px; padding:3px 8px; font-size:0.8em; color:#ddd; }
-    .order-total { text-align:right; font-size:1.1em; color:#ff9800; margin-top:10px; }
-    .order-empty { text-align:center; color:#ddd; margin:10px 0; }
-    .order-empty a { color:#e67e22; }
-  </style>
 </head>
 <body>
-  <!-- Header -->
   <header class="header">
     <h1>Orders</h1>
     <div class="header-buttons">
@@ -36,23 +19,21 @@
         Cart
         <span class="mini-cart-count" id="mini-cart-count">0</span>
       </a>
-      <!-- Orders link hidden (current page) -->
       <a href="login.html">Login</a>
     </div>
   </header>
 
-  <!-- Orders Content -->
-  <div class="cart-container">
+  <main class="cart-container">
     <h2>Your Orders</h2>
-    <div id="orders-list"></div>
-  </div>
+    <p class="order-page-note"><strong>Demo status control:</strong> Until automated backend or printer synchronization is added, this page includes a manual status selector so you can preview the order lifecycle locally in your browser.</p>
+    <div id="orders-list" class="order-list" aria-live="polite"></div>
+  </main>
 
+  <script src="order-utils.js"></script>
   <script>
     const CART_KEY = 'jgv3d_cart';
     const ORDERS_KEY = 'jgv3d_orders';
-
-    // Status values. Later a backend / printer integration can update
-    // order.status and this page will reflect it automatically.
+    const ORDER_STATUSES = ['In Queue', 'In Progress', 'Shipped', 'Completed'];
     const STATUS_CLASSES = {
       'In Queue': 'status-queued',
       'In Progress': 'status-in-progress',
@@ -61,73 +42,197 @@
     };
 
     function loadOrders() {
-      try { return JSON.parse(localStorage.getItem(ORDERS_KEY)) || []; } catch (e) { return []; }
+      try {
+        const parsed = JSON.parse(localStorage.getItem(ORDERS_KEY)) || [];
+        const { orders, didChange } = window.JGV3DOrderUtils.hydrateOrdersWithDetailKeys(parsed);
+        if (didChange) {
+          localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+        }
+        return orders;
+      } catch (e) {
+        return [];
+      }
     }
 
-    function formatPrice(num) { return `$${Number(num || 0).toFixed(2)}`; }
+    function saveOrders(orders) {
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+    }
+
+    function normalizeItem(item) {
+      return {
+        id: item && item.id ? item.id : '',
+        title: item && item.title ? item.title : 'Item',
+        img: item && item.img ? item.img : 'images/placeholder.png',
+        qty: Number(item && item.qty) > 0 ? Number(item.qty) : 1,
+        price: Number(item && item.price) || 0
+      };
+    }
+
+    function formatPrice(num) {
+      return `$${Number(num || 0).toFixed(2)}`;
+    }
+
+    function formatOrderDate(dateValue) {
+      const parsed = new Date(dateValue);
+      return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : parsed.toLocaleString();
+    }
 
     function escapeHTML(str) {
       return String(str || '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
-    // Split "Title (Right, HH, Black)" into base title + option chips.
-    function parseTitle(title) {
-      const t = title || 'Item';
-      const match = t.match(/^(.*?)\s*\((.*)\)$/);
-      if (!match) return { base: t, options: [] };
+    function getTitleParts(title) {
+      const value = title || 'Item';
+      const match = value.match(/^(.*?)\s*\((.*)\)$/);
+      if (!match) {
+        return { base: value, details: '' };
+      }
+
       return {
-        base: match[1].trim(),
-        options: match[2].split(',').map(s => s.trim()).filter(Boolean)
+        base: match[1].trim() || value,
+        details: match[2].trim()
       };
+    }
+
+    function getStatusControlId(orderId, index) {
+      const safeOrderId = String(orderId || 'order')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'order';
+      return `status-${safeOrderId}-${index}`;
+    }
+
+    function getOrderLookupKey(order) {
+      return window.JGV3DOrderUtils.getOrderLookupKey(order);
+    }
+
+    function attachImageFallbacks(container) {
+      container.querySelectorAll('img').forEach(img => {
+        img.addEventListener('error', () => {
+          img.src = 'images/placeholder.png';
+        }, { once: true });
+      });
+    }
+
+    function updateOrderStatus(orderKey, nextStatus) {
+      const orders = loadOrders();
+      const updated = orders.map(order => {
+        if (!order || getOrderLookupKey(order) !== orderKey) {
+          return order;
+        }
+        return Object.assign({}, order, { status: nextStatus });
+      });
+      saveOrders(updated);
+      renderOrders();
     }
 
     function renderOrders() {
       const list = document.getElementById('orders-list');
-      const orders = loadOrders().sort((a, b) => new Date(b.date) - new Date(a.date));
+      const orders = loadOrders().slice().sort((a, b) => new Date(b.date) - new Date(a.date));
       list.innerHTML = '';
 
-      if (orders.length === 0) {
-        list.innerHTML = `<p class="order-empty">You have no orders yet. <a href="shop.html">Browse the shop</a>.</p>`;
+      if (!orders.length) {
+        list.innerHTML = `
+          <section class="order-empty-state">
+            <h3>No orders yet</h3>
+            <p>Your completed checkouts will appear here once items move out of the cart.</p>
+            <p><a href="shop.html">Browse the shop</a> to start your next build.</p>
+          </section>
+        `;
         return;
       }
 
-      orders.forEach(order => {
-        const status = order.status || 'In Queue';
+      orders.forEach((order, index) => {
+        const items = Array.isArray(order.items) ? order.items.map(normalizeItem) : [];
+        const status = ORDER_STATUSES.includes(order.status) ? order.status : 'In Queue';
         const statusClass = STATUS_CLASSES[status] || 'status-queued';
-        const card = document.createElement('div');
-        card.className = 'order-card';
-
-        const itemsHTML = (order.items || []).map(item => {
-          const parsed = parseTitle(item.title);
-          const qty = Number(item.qty) || 1;
-          const price = Number(item.price) || 0;
-          const img = item.img && String(item.img).trim() ? item.img : 'images/placeholder.png';
-          const chips = parsed.options.map(o => `<span class="order-option">${escapeHTML(o)}</span>`).join('');
+        const itemCount = items.reduce((sum, item) => sum + item.qty, 0);
+        const orderTotal = typeof order.total === 'number'
+          ? order.total
+          : items.reduce((sum, item) => sum + item.price * item.qty, 0);
+        const formattedDate = formatOrderDate(order.date);
+        const orderLookupKey = getOrderLookupKey(order);
+        const canAddressOrder = Boolean(orderLookupKey);
+        const statusControlId = getStatusControlId(orderLookupKey, index);
+        const statusHelpId = `${statusControlId}-help`;
+        const orderDetailsHref = `order-details.html?id=${encodeURIComponent(orderLookupKey)}`;
+        const previewItems = items.slice(0, 2).map(item => {
+          const parts = getTitleParts(item.title);
+          const imagePath = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
           return `
-            <div class="cart-item">
-              <img src="${escapeHTML(img)}" alt="${escapeHTML(parsed.base)}" onerror="this.src='images/placeholder.png'">
-              <div class="cart-item-details">
-                <h4>${escapeHTML(parsed.base)}</h4>
-                ${chips ? `<div class="order-options">${chips}</div>` : ''}
-                <p>Qty: ${qty} &times; ${formatPrice(price)}</p>
+            <article class="order-preview-item">
+              <img src="${escapeHTML(imagePath)}" alt="${escapeHTML(parts.base)}">
+              <div class="order-preview-content">
+                <h3>${escapeHTML(parts.base)}</h3>
+                ${parts.details ? `<p class="order-item-options"><strong>Selected options:</strong> ${escapeHTML(parts.details)}</p>` : ''}
+                <p class="order-meta">Qty ${item.qty} × ${formatPrice(item.price)}</p>
               </div>
-              <div class="cart-item-price">${formatPrice(qty * price)}</div>
-            </div>`;
+              <div class="order-price">${formatPrice(item.qty * item.price)}</div>
+            </article>
+          `;
         }).join('');
 
+        const extraCount = items.length - 2;
+        const card = document.createElement('section');
+        card.className = 'order-card';
         card.innerHTML = `
           <div class="order-header">
             <div>
-              <div class="order-id">Order #${escapeHTML(order.id)}</div>
-              <div class="order-date">Placed ${new Date(order.date).toLocaleString()}</div>
+              <div class="order-id">Order #${escapeHTML(order.id || 'Unknown')}</div>
+              <div class="order-date">Placed ${escapeHTML(formattedDate)}</div>
             </div>
             <span class="order-status ${statusClass}">${escapeHTML(status)}</span>
           </div>
-          ${itemsHTML}
-          <div class="order-total">Order Total: ${formatPrice(order.total)}</div>
+
+          <div class="order-summary-grid">
+            <div class="order-summary-stat">
+              <span class="order-summary-label">Items</span>
+              <span class="order-summary-value">${itemCount}</span>
+            </div>
+            <div class="order-summary-stat">
+              <span class="order-summary-label">Order Total</span>
+              <span class="order-summary-value">${formatPrice(orderTotal)}</span>
+            </div>
+            <div class="order-summary-stat">
+              <span class="order-summary-label">Current Stage</span>
+              <span class="order-summary-value">${escapeHTML(status)}</span>
+            </div>
+          </div>
+
+          <div class="order-preview-list">
+            ${previewItems}
+            ${extraCount > 0 ? `<p class="order-card-copy">+${extraCount} more ${extraCount === 1 ? 'item' : 'items'} in this order.</p>` : ''}
+          </div>
+
+          <div class="order-card-footer">
+            ${canAddressOrder
+              ? `<a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>`
+              : '<span class="order-card-copy">Order details are unavailable until this local order record has a valid reference.</span>'}
+            <fieldset class="order-status-form" data-order-key="${escapeHTML(orderLookupKey)}">
+              <legend class="order-status-legend">Demo status for order ${escapeHTML(order.id || 'this order')}</legend>
+              <label for="${escapeHTML(statusControlId)}">Demo status</label>
+              <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-describedby="${escapeHTML(statusHelpId)}" ${canAddressOrder ? '' : 'disabled aria-disabled="true"'}>
+                ${ORDER_STATUSES.map(option => `<option value="${escapeHTML(option)}" ${option === status ? 'selected' : ''}>${escapeHTML(option)}</option>`).join('')}
+              </select>
+              <p class="order-status-help" id="${escapeHTML(statusHelpId)}">${canAddressOrder ? 'Temporary manual control while backend/printer sync is not connected yet.' : 'This local order record needs a valid reference before its demo status can be updated.'}</p>
+            </fieldset>
+          </div>
         `;
+
+        attachImageFallbacks(card);
+
+        const select = card.querySelector('.order-status-select');
+        if (select && canAddressOrder) {
+          select.addEventListener('change', (event) => {
+            updateOrderStatus(orderLookupKey, event.target.value);
+          });
+        }
+
         list.appendChild(card);
       });
     }
@@ -136,15 +241,21 @@
       try {
         const cart = JSON.parse(localStorage.getItem(CART_KEY)) || [];
         const totalItems = cart.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-        const el = document.getElementById('mini-cart-count');
-        if (el) { el.textContent = totalItems; el.style.display = totalItems > 0 ? 'flex' : 'none'; }
+        const miniCartCount = document.getElementById('mini-cart-count');
+        if (miniCartCount) {
+          miniCartCount.textContent = totalItems;
+          miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
+        }
       } catch (e) {}
     }
 
-    // Keep in sync if orders/cart change in another tab
-    window.addEventListener('storage', (e) => {
-      if (e.key === ORDERS_KEY) renderOrders();
-      if (e.key === CART_KEY) updateMiniCart();
+    window.addEventListener('storage', (event) => {
+      if (event.key === ORDERS_KEY) {
+        renderOrders();
+      }
+      if (event.key === CART_KEY) {
+        updateMiniCart();
+      }
     });
 
     renderOrders();
