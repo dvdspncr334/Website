@@ -117,28 +117,15 @@ header h1 {
 }
 
 .faq-item summary {
-  list-style: none;
-  position: relative;
   cursor: pointer;
-  padding: 14px 44px 14px 16px;
+  padding: 14px 16px;
   color: #fff;
   font-weight: 600;
   transition: background 0.2s ease, color 0.2s ease;
 }
 
-.faq-item summary::-webkit-details-marker {
-  display: none;
-}
-
-.faq-item summary::after {
-  content: '+';
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
+.faq-item summary::marker {
   color: #e67e22;
-  font-size: 1.1rem;
-  line-height: 1;
 }
 
 .faq-item summary:hover {
@@ -173,10 +160,6 @@ header h1 {
 .faq-item[open] summary {
   border-bottom: 1px solid #4a4a4a;
   background: rgba(230, 126, 34, 0.18);
-}
-
-.faq-item[open] summary::after {
-  content: '−';
 }
 
 /* ==========================================================
