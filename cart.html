@@ -26,20 +26,31 @@
   <div class="cart-container">
     <h2>Your Cart</h2>
     <div id="cart-summary"></div>
+    <div id="cart-selection-controls" class="cart-selection-controls">
+      <label for="select-all-checkbox">
+        <input type="checkbox" id="select-all-checkbox" aria-label="Select all cart items">
+        Select All
+      </label>
+      <span id="cart-selection-message" class="cart-selection-message" aria-live="polite"></span>
+    </div>
     <div id="cart-items"></div>
 
     <div id="cart-total" style="margin-top:16px; font-size:1.1em; color:#ff9800;"></div>
 
-    <a href="#" class="checkout-btn" id="checkout-btn">Proceed to Checkout</a>
+    <button type="button" class="checkout-btn" id="checkout-btn">Proceed to Checkout</button>
   </div>
 
   <script src="order-utils.js"></script>
   <script>
     const CART_KEY = 'jgv3d_cart';
     const ORDERS_KEY = 'jgv3d_orders';
+    const CART_SELECTION_KEY = 'jgv3d_cart_selection';
 
     const cartItemsEl = document.getElementById('cart-items');
     const cartSummaryEl = document.getElementById('cart-summary');
+    const cartSelectionControlsEl = document.getElementById('cart-selection-controls');
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    const cartSelectionMessageEl = document.getElementById('cart-selection-message');
     const cartTotalEl = document.getElementById('cart-total');
     const checkoutBtn = document.getElementById('checkout-btn');
 
@@ -65,6 +76,19 @@
 
     function saveOrders(orders) {
       localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+    }
+
+    function loadCartSelection() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(CART_SELECTION_KEY));
+        return Array.isArray(parsed) ? parsed.map(id => String(id)) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function saveCartSelection(selectionIds) {
+      localStorage.setItem(CART_SELECTION_KEY, JSON.stringify(selectionIds));
     }
 
     function formatPrice(num) {
@@ -120,6 +144,33 @@
       }
     }
 
+    function getSelectionForCart(cart) {
+      const cartIds = cart.map(item => String(item.id));
+      const storedSelection = loadCartSelection();
+      const selectedIds = storedSelection === null
+        ? cartIds
+        : cartIds.filter(id => storedSelection.includes(id));
+      saveCartSelection(selectedIds);
+      return new Set(selectedIds);
+    }
+
+    function updateSelectAllState(cart, selectedIds) {
+      const allSelected = cart.length > 0 && cart.every(item => selectedIds.has(String(item.id)));
+      const anySelected = cart.some(item => selectedIds.has(String(item.id)));
+      selectAllCheckbox.checked = allSelected;
+      selectAllCheckbox.indeterminate = anySelected && !allSelected;
+    }
+
+    function updateCheckoutState(selectedCount) {
+      const hasSelectedItems = selectedCount > 0;
+      checkoutBtn.classList.toggle('is-disabled', !hasSelectedItems);
+      checkoutBtn.setAttribute('aria-disabled', hasSelectedItems ? 'false' : 'true');
+      checkoutBtn.disabled = !hasSelectedItems;
+      if (hasSelectedItems) {
+        cartSelectionMessageEl.textContent = '';
+      }
+    }
+
     function renderCart() {
       const cart = loadCart().map(item => normalizeCartItem(item));
 
@@ -128,36 +179,52 @@
 
       cartItemsEl.innerHTML = '';
       cartSummaryEl.innerHTML = '';
+      cartSelectionMessageEl.textContent = '';
 
       if (cart.length === 0) {
         cartItemsEl.innerHTML = `<p style="text-align:center; color:#ddd; margin:10px 0;">Your cart is empty.</p>`;
         cartTotalEl.textContent = '';
+        cartSelectionControlsEl.style.display = 'none';
         checkoutBtn.style.display = 'none';
         return;
       } else {
+        cartSelectionControlsEl.style.display = 'flex';
         checkoutBtn.style.display = 'block';
       }
 
       renderCartSummary(cart);
+      const selectedIds = getSelectionForCart(cart);
+      updateSelectAllState(cart, selectedIds);
 
-      let total = 0;
+      let selectedTotal = 0;
+      let selectedItemCount = 0;
 
-      cart.forEach(item => {
+      cart.forEach((item, itemIndex) => {
         const subtotal = item.price * item.qty;
-        total += subtotal;
+        const itemId = String(item.id);
+        const isSelected = selectedIds.has(itemId);
+        if (isSelected) {
+          selectedTotal += subtotal;
+          selectedItemCount += item.qty;
+        }
         const parsedTitle = parseCartTitle(item.title || 'Item');
         const safeBaseTitle = escapeHTML(parsedTitle.baseTitle || 'Item');
         const safeCustomNote = escapeHTML(parsedTitle.customNote || '');
         const itemImage = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
+        const safeItemImage = escapeHTML(itemImage);
+        const titleId = `cart-item-title-${itemIndex}`;
 
         const wrapper = document.createElement('div');
         wrapper.className = 'cart-item';
 
         wrapper.innerHTML = `
-          <img src="${itemImage}" alt="${safeBaseTitle}" onerror="this.src='images/placeholder.png'">
+          <div class="cart-item-select">
+            <input type="checkbox" class="cart-item-checkbox" ${isSelected ? 'checked' : ''} aria-labelledby="${titleId}">
+          </div>
+          <img src="${safeItemImage}" alt="${safeBaseTitle}" onerror="this.src='images/placeholder.png'">
           <div class="cart-item-details">
             <div class="cart-item-header-row">
-              <h4>${safeBaseTitle}</h4>
+              <h4 id="${titleId}">${safeBaseTitle}</h4>
               ${parsedTitle.isCustomOrder ? '<span class="custom-order-badge">Custom Order</span>' : ''}
             </div>
             ${safeCustomNote ? `<p class="cart-item-note"><strong>Custom Color / Notes:</strong> ${safeCustomNote}</p>` : ''}
@@ -176,6 +243,17 @@
         const qtyEl = wrapper.querySelector('.qty-value');
         const priceEl = wrapper.querySelector('.cart-item-price');
         const removeBtn = wrapper.querySelector('.remove-btn');
+        const itemCheckbox = wrapper.querySelector('.cart-item-checkbox');
+
+        itemCheckbox.addEventListener('change', () => {
+          if (itemCheckbox.checked) {
+            selectedIds.add(itemId);
+          } else {
+            selectedIds.delete(itemId);
+          }
+          saveCartSelection(Array.from(selectedIds));
+          renderCart();
+        });
 
         minus.addEventListener('click', () => {
           const cartData = loadCart().map(entry => normalizeCartItem(entry));
@@ -203,6 +281,8 @@
 
         removeBtn.addEventListener('click', () => {
           const cartData = loadCart().filter(x => x.id !== item.id);
+          selectedIds.delete(itemId);
+          saveCartSelection(Array.from(selectedIds));
           saveCart(cartData);
           renderCart();
         });
@@ -210,24 +290,31 @@
         cartItemsEl.appendChild(wrapper);
       });
 
-      cartTotalEl.textContent = `Total: ${formatPrice(total)}`;
+      cartTotalEl.textContent = `Total: ${formatPrice(selectedTotal)} • ${selectedItemCount} selected`;
+      updateCheckoutState(selectedItemCount);
     }
 
     // Checkout: move all cart items into a new queued order, clear the cart,
     // then send the user to the Orders page.
-    checkoutBtn.addEventListener('click', (e) => {
-      e.preventDefault();
+    checkoutBtn.addEventListener('click', () => {
       const cart = loadCart().map(item => normalizeCartItem(item));
       if (cart.length === 0) return;
+      const selectedIds = getSelectionForCart(cart);
+      const selectedItems = cart.filter(item => selectedIds.has(String(item.id)));
+      if (selectedItems.length === 0) {
+        cartSelectionMessageEl.textContent = 'Select at least one item to checkout.';
+        updateCheckoutState(0);
+        return;
+      }
 
-      const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+      const total = selectedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
       const now = new Date();
       const order = {
         id: 'JGV-' + now.getTime().toString().slice(-8),
         detailKey: window.JGV3DOrderUtils.createOrderDetailKey(),
         date: now.toISOString(),
         status: 'In Queue',
-        items: cart.map(item => ({
+        items: selectedItems.map(item => ({
           id: item.id,
           title: item.title,
           img: item.img,
@@ -240,9 +327,21 @@
       const orders = loadOrders();
       orders.push(order);
       saveOrders(orders);
-      saveCart([]);
+      const remainingCartItems = cart.filter(item => !selectedIds.has(String(item.id)));
+      saveCart(remainingCartItems);
+      const remainingSelection = Array.from(selectedIds).filter(id =>
+        remainingCartItems.some(item => String(item.id) === id)
+      );
+      saveCartSelection(remainingSelection);
 
       window.location.href = 'orders.html';
+    });
+
+    selectAllCheckbox.addEventListener('change', () => {
+      const cart = loadCart().map(item => normalizeCartItem(item));
+      const selectedIds = selectAllCheckbox.checked ? cart.map(item => String(item.id)) : [];
+      saveCartSelection(selectedIds);
+      renderCart();
     });
 
     // Update mini-cart count
