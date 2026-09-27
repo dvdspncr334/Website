@@ -148,6 +148,11 @@ header h1 {
     background: Canvas;
     color: CanvasText;
   }
+
+  .faq-item summary::marker,
+  .faq-item summary::-webkit-details-marker {
+    color: CanvasText;
+  }
 }
 
 .faq-item p {
