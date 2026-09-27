@@ -153,6 +153,7 @@
 
       const updatedOrders = latestOrders.slice();
       updatedOrders.splice(targetIndex, 1);
+      const matchingBefore = latestOrders.filter(order => order && getOrderLookupKey(order) === orderKey).length;
 
       try {
         saveOrders(updatedOrders);
@@ -162,8 +163,10 @@
       }
 
       const persistedOrders = loadOrders();
-      const stillExists = persistedOrders.some(order => order && getOrderLookupKey(order) === orderKey);
-      if (stillExists) {
+      const matchingAfter = persistedOrders.filter(order => order && getOrderLookupKey(order) === orderKey).length;
+      const removedExactlyOneMatch = matchingAfter === Math.max(0, matchingBefore - 1);
+      const expectedLength = Math.max(0, latestOrders.length - 1);
+      if (!removedExactlyOneMatch || persistedOrders.length !== expectedLength) {
         window.alert('Unable to confirm deletion from local storage. Please try again.');
         renderOrders();
         return;
