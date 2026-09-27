@@ -208,6 +208,7 @@
         const statusControlId = getStatusControlId(orderLookupKey, index);
         const statusHelpId = `${statusControlId}-help`;
         const orderDetailsHref = `order-details.html?id=${encodeURIComponent(orderLookupKey)}`;
+        const deleteOrderAriaLabel = `Delete order ${order.id || 'record'}`;
         const previewItems = items.slice(0, 2).map(item => {
           const parts = getTitleParts(item.title);
           const imagePath = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
@@ -261,7 +262,7 @@
               ? `<a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>`
               : '<span class="order-card-copy">Order details are unavailable until this local order record has a valid reference.</span>'}
             ${canAddressOrder
-              ? `<button type="button" class="remove-btn" data-delete-order-key="${escapeHTML(orderLookupKey)}">Delete Order</button>`
+              ? `<button type="button" class="remove-btn" data-delete-order-key="${escapeHTML(orderLookupKey)}" aria-label="${escapeHTML(deleteOrderAriaLabel)}">Delete Order</button>`
               : ''}
             <fieldset class="order-status-form" data-order-key="${escapeHTML(orderLookupKey)}">
               <legend class="order-status-legend">Demo status for order ${escapeHTML(order.id || 'this order')}</legend>
