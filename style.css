@@ -718,60 +718,6 @@ footer a:hover {
   }
 }
 
-@supports (not (appearance: none)) and ((-webkit-appearance: none)) {
-  .cart-selection-controls input[type="checkbox"],
-  .cart-item-select input[type="checkbox"] {
-    -webkit-appearance: none;
-    background: #2a2a2a;
-    border: 2px solid #e67e22;
-    border-radius: 4px;
-    position: relative;
-    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
-  }
-
-  .cart-selection-controls input[type="checkbox"]:hover,
-  .cart-item-select input[type="checkbox"]:hover {
-    border-color: #f0b27a;
-    box-shadow: 0 0 0 2px rgba(240, 178, 122, 0.18);
-  }
-
-  .cart-selection-controls input[type="checkbox"]:checked,
-  .cart-item-select input[type="checkbox"]:checked {
-    background: #e67e22;
-    border-color: #e67e22;
-  }
-
-  .cart-selection-controls input[type="checkbox"]:checked::after,
-  .cart-item-select input[type="checkbox"]:checked::after {
-    content: '';
-    position: absolute;
-    left: 5px;
-    top: 1px;
-    width: 5px;
-    height: 10px;
-    border: solid #fff;
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
-  }
-
-  .cart-selection-controls input[type="checkbox"]:indeterminate,
-  .cart-item-select input[type="checkbox"]:indeterminate {
-    background: #e67e22;
-    border-color: #e67e22;
-  }
-
-  .cart-selection-controls input[type="checkbox"]:indeterminate::after,
-  .cart-item-select input[type="checkbox"]:indeterminate::after {
-    content: '';
-    position: absolute;
-    left: 3px;
-    top: 7px;
-    width: 10px;
-    height: 2px;
-    background: #fff;
-  }
-}
-
 .cart-selection-message {
   color: #f0b27a;
   font-size: 0.9em;
