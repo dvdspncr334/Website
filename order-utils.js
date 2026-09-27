@@ -25,7 +25,7 @@
     if (!order || typeof order !== 'object') {
       return '';
     }
-    return String(order.detailKey || order.id || '');
+    return order.detailKey ? String(order.detailKey) : '';
   }
 
   window.JGV3DOrderUtils = {
