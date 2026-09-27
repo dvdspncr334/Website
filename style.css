@@ -126,10 +126,6 @@ header h1 {
   transition: background 0.2s ease, color 0.2s ease;
 }
 
-.faq-item summary::-webkit-details-marker {
-  display: inline-block;
-}
-
 .faq-item summary:hover {
   background: rgba(230, 126, 34, 0.14);
 }
