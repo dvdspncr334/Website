@@ -656,7 +656,7 @@ footer a:hover {
 
 .cart-selection-controls input[type="checkbox"]:hover,
 .cart-item-select input[type="checkbox"]:hover {
-  filter: brightness(1.05);
+  box-shadow: 0 0 0 2px rgba(240, 178, 122, 0.25);
 }
 
 .cart-selection-controls input[type="checkbox"]:focus-visible,
@@ -665,7 +665,7 @@ footer a:hover {
   outline-offset: 2px;
 }
 
-@supports ((appearance: none) or (-webkit-appearance: none)) {
+@supports (appearance: none) {
   .cart-selection-controls input[type="checkbox"],
   .cart-item-select input[type="checkbox"] {
     appearance: none;
@@ -681,7 +681,7 @@ footer a:hover {
   .cart-selection-controls input[type="checkbox"]:hover,
   .cart-item-select input[type="checkbox"]:hover {
     border-color: #f0b27a;
-    filter: none;
+    box-shadow: 0 0 0 2px rgba(240, 178, 122, 0.18);
   }
 
   .cart-selection-controls input[type="checkbox"]:checked,
