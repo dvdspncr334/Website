@@ -175,7 +175,7 @@
         const orderLookupKey = getOrderLookupKey(order);
         const statusControlId = getStatusControlId(orderLookupKey, index);
         const statusHelpId = `${statusControlId}-help`;
-        const orderDetailsHref = `order-details.html?id=${encodeURIComponent(String(order.detailKey || ''))}`;
+        const orderDetailsHref = `order-details.html?id=${encodeURIComponent(orderLookupKey)}`;
         const previewItems = items.slice(0, 2).map(item => {
           const parts = getTitleParts(item.title);
           const imagePath = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
@@ -226,7 +226,7 @@
 
           <div class="order-card-footer">
             <a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>
-            <div class="order-status-form" data-order-key="${escapeHTML(order.detailKey || '')}" role="group" aria-label="Demo status controls for order ${escapeHTML(order.id || 'this order')}">
+            <div class="order-status-form" data-order-key="${escapeHTML(orderLookupKey)}" role="group" aria-label="Demo status controls for order ${escapeHTML(order.id || 'this order')}">
               <label for="${escapeHTML(statusControlId)}">Demo status</label>
               <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-label="Demo status for order ${escapeHTML(order.id || '')}" aria-describedby="${escapeHTML(statusHelpId)}">
                 ${ORDER_STATUSES.map(option => `<option value="${escapeHTML(option)}" ${option === status ? 'selected' : ''}>${escapeHTML(option)}</option>`).join('')}

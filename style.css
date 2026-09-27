@@ -920,6 +920,13 @@ footer a:hover {
   text-decoration: underline;
 }
 
+.order-detail-link:focus-visible,
+.order-back-link:focus-visible {
+  outline: 2px solid #f0b27a;
+  outline-offset: 3px;
+  text-decoration: underline;
+}
+
 .order-status-form {
   display: flex;
   flex-wrap: wrap;
