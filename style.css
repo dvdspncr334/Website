@@ -118,7 +118,7 @@ header h1 {
 
 .faq-item summary {
   display: list-item;
-  list-style-position: inside;
+  list-style-position: outside;
   cursor: pointer;
   padding: 14px 16px;
   color: #fff;
