@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/x-icon" href="images/favicon.ico">
+  <title>Order Details | JGV3D Guitar Bodies</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header">
+    <h1>Order Details</h1>
+    <div class="header-buttons">
+      <a href="index.html">Home</a>
+      <a href="shop.html">Shop</a>
+      <a href="gallery.html">Gallery</a>
+      <a href="about.html">About Us</a>
+      <a href="usefullinks.html">Useful Links</a>
+      <a href="cart.html" class="mini-cart" id="mini-cart">
+        Cart
+        <span class="mini-cart-count" id="mini-cart-count">0</span>
+      </a>
+      <a href="orders.html">My Orders</a>
+      <a href="login.html">Login</a>
+    </div>
+  </header>
+
+  <main class="cart-container">
+    <a class="order-back-link" href="orders.html">← Back to Orders</a>
+    <div id="order-details-root" style="margin-top:16px;"></div>
+  </main>
+
+  <script>
+    const CART_KEY = 'jgv3d_cart';
+    const ORDERS_KEY = 'jgv3d_orders';
+    const ORDER_STATUSES = ['In Queue', 'In Progress', 'Shipped', 'Completed'];
+    const STATUS_CLASSES = {
+      'In Queue': 'status-queued',
+      'In Progress': 'status-in-progress',
+      'Shipped': 'status-shipped',
+      'Completed': 'status-completed'
+    };
+
+    function loadOrders() {
+      try {
+        return JSON.parse(localStorage.getItem(ORDERS_KEY)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function normalizeItem(item) {
+      return {
+        id: item && item.id ? item.id : '',
+        title: item && item.title ? item.title : 'Item',
+        img: item && item.img ? item.img : 'images/placeholder.png',
+        qty: Number(item && item.qty) > 0 ? Number(item.qty) : 1,
+        price: Number(item && item.price) || 0
+      };
+    }
+
+    function formatPrice(num) {
+      return `$${Number(num || 0).toFixed(2)}`;
+    }
+
+    function escapeHTML(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getTitleParts(title) {
+      const value = title || 'Item';
+      const match = value.match(/^(.*?)\s*\((.*)\)$/);
+      if (!match) {
+        return { base: value, details: '' };
+      }
+
+      return {
+        base: match[1].trim() || value,
+        details: match[2].trim()
+      };
+    }
+
+    function getOrderId() {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('id') || '';
+    }
+
+    function renderNotFound(orderId) {
+      const root = document.getElementById('order-details-root');
+      root.innerHTML = `
+        <section class="order-not-found">
+          <h2>Order not found</h2>
+          <p>We could not find an order matching <strong>${escapeHTML(orderId || 'the provided link')}</strong>.</p>
+          <p>Please return to <a href="orders.html">My Orders</a> and choose another order.</p>
+        </section>
+      `;
+    }
+
+    function renderOrder(order) {
+      const root = document.getElementById('order-details-root');
+      const items = Array.isArray(order.items) ? order.items.map(normalizeItem) : [];
+      const status = ORDER_STATUSES.includes(order.status) ? order.status : 'In Queue';
+      const statusClass = STATUS_CLASSES[status] || 'status-queued';
+      const itemCount = items.reduce((sum, item) => sum + item.qty, 0);
+      const orderTotal = typeof order.total === 'number'
+        ? order.total
+        : items.reduce((sum, item) => sum + item.price * item.qty, 0);
+      const currentIndex = ORDER_STATUSES.indexOf(status);
+
+      const progressMarkup = ORDER_STATUSES.map((step, index) => {
+        const classes = ['order-progress-step'];
+        if (index < currentIndex) {
+          classes.push('is-complete');
+        } else if (index === currentIndex) {
+          classes.push('is-active');
+        }
+        return `<div class="${classes.join(' ')}">${escapeHTML(step)}<span>${index < currentIndex ? 'Completed stage' : index === currentIndex ? 'Current status' : 'Upcoming stage'}</span></div>`;
+      }).join('');
+
+      const itemsMarkup = items.map(item => {
+        const parts = getTitleParts(item.title);
+        const imagePath = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
+        return `
+          <article class="order-detail-item">
+            <img src="${escapeHTML(imagePath)}" alt="${escapeHTML(parts.base)}" onerror="this.src='images/placeholder.png'">
+            <div class="order-item-content">
+              <h3>${escapeHTML(parts.base)}</h3>
+              <p class="order-item-meta"><strong>Full item:</strong> ${escapeHTML(item.title)}</p>
+              ${parts.details ? `<p class="order-item-options"><strong>Selected options:</strong> ${escapeHTML(parts.details)}</p>` : ''}
+              <p class="order-item-meta"><strong>Quantity:</strong> ${item.qty}</p>
+              <p class="order-item-meta"><strong>Unit price:</strong> ${formatPrice(item.price)}</p>
+            </div>
+            <div class="order-item-side">
+              <span class="order-status ${statusClass}">${escapeHTML(status)}</span>
+              <div class="order-item-subtotal">${formatPrice(item.qty * item.price)}</div>
+            </div>
+          </article>
+        `;
+      }).join('');
+
+      root.innerHTML = `
+        <section class="order-detail-shell">
+          <div class="order-detail-topbar">
+            <div>
+              <div class="order-id">Order #${escapeHTML(order.id || 'Unknown')}</div>
+              <div class="order-date">Placed ${new Date(order.date).toLocaleString()}</div>
+            </div>
+            <span class="order-status ${statusClass}">${escapeHTML(status)}</span>
+          </div>
+
+          <div class="order-detail-summary">
+            <div class="order-summary-stat">
+              <span class="order-summary-label">Order Number</span>
+              <span class="order-summary-value">${escapeHTML(order.id || 'Unknown')}</span>
+            </div>
+            <div class="order-summary-stat">
+              <span class="order-summary-label">Placed Date</span>
+              <span class="order-summary-value">${escapeHTML(new Date(order.date).toLocaleString())}</span>
+            </div>
+            <div class="order-summary-stat">
+              <span class="order-summary-label">Items</span>
+              <span class="order-summary-value">${itemCount}</span>
+            </div>
+            <div class="order-summary-stat">
+              <span class="order-summary-label">Total</span>
+              <span class="order-summary-value">${formatPrice(orderTotal)}</span>
+            </div>
+          </div>
+
+          <section class="order-progress" aria-label="Order progress">
+            <h3>Order Progress</h3>
+            <div class="order-progress-track">${progressMarkup}</div>
+          </section>
+
+          <section class="order-detail-section">
+            <h3>Items in this order</h3>
+            <div class="order-detail-items">${itemsMarkup}</div>
+            <div class="order-total-row">Order Total: ${formatPrice(orderTotal)}</div>
+          </section>
+        </section>
+      `;
+    }
+
+    function renderOrderDetails() {
+      const orderId = getOrderId();
+      if (!orderId) {
+        renderNotFound('missing order id');
+        return;
+      }
+
+      const order = loadOrders().find(entry => entry && entry.id === orderId);
+      if (!order) {
+        renderNotFound(orderId);
+        return;
+      }
+
+      renderOrder(order);
+    }
+
+    function updateMiniCart() {
+      try {
+        const cart = JSON.parse(localStorage.getItem(CART_KEY)) || [];
+        const totalItems = cart.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+        const miniCartCount = document.getElementById('mini-cart-count');
+        if (miniCartCount) {
+          miniCartCount.textContent = totalItems;
+          miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
+        }
+      } catch (e) {}
+    }
+
+    window.addEventListener('storage', (event) => {
+      if (event.key === ORDERS_KEY) {
+        renderOrderDetails();
+      }
+      if (event.key === CART_KEY) {
+        updateMiniCart();
+      }
+    });
+
+    renderOrderDetails();
+    updateMiniCart();
+  </script>
+</body>
+</html>
