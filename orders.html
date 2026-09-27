@@ -162,7 +162,7 @@
         return;
       }
 
-      const nextOrders = orders.filter(order => !order || getOrderLookupKey(order) !== orderKey);
+      const nextOrders = orders.filter(order => order && getOrderLookupKey(order) !== orderKey);
       if (!saveOrders(nextOrders)) {
         window.alert(`Could not remove ${label} because this browser could not update local storage.`);
         return;
