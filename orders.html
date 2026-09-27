@@ -131,6 +131,47 @@
       renderOrders();
     }
 
+    function removeOrder(orderKey) {
+      if (!orderKey) {
+        return;
+      }
+
+      const latestOrders = loadOrders();
+      const targetIndex = latestOrders.findIndex(order => order && getOrderLookupKey(order) === orderKey);
+      if (targetIndex === -1) {
+        window.alert('This order is no longer available in local storage.');
+        renderOrders();
+        return;
+      }
+
+      const targetOrder = latestOrders[targetIndex];
+      const orderLabel = targetOrder && targetOrder.id ? `Order #${targetOrder.id}` : 'this order';
+      const confirmed = window.confirm(`Delete ${orderLabel}? This only removes the locally saved order in this browser.`);
+      if (!confirmed) {
+        return;
+      }
+
+      const updatedOrders = latestOrders.slice();
+      updatedOrders.splice(targetIndex, 1);
+
+      try {
+        saveOrders(updatedOrders);
+      } catch (e) {
+        window.alert('Unable to delete this order from local storage right now.');
+        return;
+      }
+
+      const persistedOrders = loadOrders();
+      const stillExists = persistedOrders.some(order => order && getOrderLookupKey(order) === orderKey);
+      if (stillExists) {
+        window.alert('Unable to confirm deletion from local storage. Please try again.');
+        renderOrders();
+        return;
+      }
+
+      renderOrders();
+    }
+
     function renderOrders() {
       const list = document.getElementById('orders-list');
       const orders = loadOrders().slice().sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -213,6 +254,9 @@
             ${canAddressOrder
               ? `<a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>`
               : '<span class="order-card-copy">Order details are unavailable until this local order record has a valid reference.</span>'}
+            ${canAddressOrder
+              ? `<button type="button" class="remove-btn" data-delete-order-key="${escapeHTML(orderLookupKey)}">Delete Order</button>`
+              : ''}
             <fieldset class="order-status-form" data-order-key="${escapeHTML(orderLookupKey)}">
               <legend class="order-status-legend">Demo status for order ${escapeHTML(order.id || 'this order')}</legend>
               <label for="${escapeHTML(statusControlId)}">Demo status</label>
@@ -230,6 +274,13 @@
         if (select && canAddressOrder) {
           select.addEventListener('change', (event) => {
             updateOrderStatus(orderLookupKey, event.target.value);
+          });
+        }
+
+        const deleteButton = card.querySelector('[data-delete-order-key]');
+        if (deleteButton && canAddressOrder) {
+          deleteButton.addEventListener('click', () => {
+            removeOrder(orderLookupKey);
           });
         }
 
