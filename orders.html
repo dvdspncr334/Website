@@ -49,7 +49,9 @@
         if (didChange) {
           try {
             localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
-          } catch (e) {}
+          } catch (e) {
+            console.warn('Could not persist hydrated order keys to local storage.', e);
+          }
         }
         return orders;
       } catch (e) {
@@ -62,6 +64,7 @@
         localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
         return true;
       } catch (e) {
+        console.error('Could not save orders to local storage.', e);
         return false;
       }
     }
