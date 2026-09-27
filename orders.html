@@ -66,6 +66,11 @@
       return `$${Number(num || 0).toFixed(2)}`;
     }
 
+    function formatOrderDate(dateValue) {
+      const parsed = new Date(dateValue);
+      return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : parsed.toLocaleString();
+    }
+
     function escapeHTML(str) {
       return String(str || '')
         .replace(/&/g, '&amp;')
@@ -86,6 +91,14 @@
         base: match[1].trim() || value,
         details: match[2].trim()
       };
+    }
+
+    function getStatusControlId(orderId, index) {
+      const safeOrderId = String(orderId || 'order')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'order';
+      return `status-${safeOrderId}-${index}`;
     }
 
     function updateOrderStatus(orderId, nextStatus) {
@@ -114,7 +127,7 @@
         return;
       }
 
-      orders.forEach(order => {
+      orders.forEach((order, index) => {
         const items = Array.isArray(order.items) ? order.items.map(normalizeItem) : [];
         const status = ORDER_STATUSES.includes(order.status) ? order.status : 'In Queue';
         const statusClass = STATUS_CLASSES[status] || 'status-queued';
@@ -122,6 +135,8 @@
         const orderTotal = typeof order.total === 'number'
           ? order.total
           : items.reduce((sum, item) => sum + item.price * item.qty, 0);
+        const formattedDate = formatOrderDate(order.date);
+        const statusControlId = getStatusControlId(order.id, index);
         const previewItems = items.slice(0, 2).map(item => {
           const parts = getTitleParts(item.title);
           const imagePath = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
@@ -145,7 +160,7 @@
           <div class="order-header">
             <div>
               <div class="order-id">Order #${escapeHTML(order.id || 'Unknown')}</div>
-              <div class="order-date">Placed ${new Date(order.date).toLocaleString()}</div>
+              <div class="order-date">Placed ${escapeHTML(formattedDate)}</div>
             </div>
             <span class="order-status ${statusClass}">${escapeHTML(status)}</span>
           </div>
@@ -173,8 +188,8 @@
           <div class="order-card-footer">
             <a class="order-detail-link" href="order-details.html?id=${encodeURIComponent(order.id || '')}">View Order Details</a>
             <form class="order-status-form" data-order-id="${escapeHTML(order.id || '')}">
-              <label for="status-${escapeHTML(order.id || '')}">Demo status</label>
-              <select class="order-status-select" id="status-${escapeHTML(order.id || '')}" aria-label="Demo status for order ${escapeHTML(order.id || '')}">
+              <label for="${escapeHTML(statusControlId)}">Demo status</label>
+              <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-label="Demo status for order ${escapeHTML(order.id || '')}">
                 ${ORDER_STATUSES.map(option => `<option value="${escapeHTML(option)}" ${option === status ? 'selected' : ''}>${escapeHTML(option)}</option>`).join('')}
               </select>
               <p class="order-status-help">Temporary manual control while backend/printer sync is not connected yet.</p>
