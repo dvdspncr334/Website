@@ -160,7 +160,7 @@
           return;
         }
 
-        const faqDataUrl = new URL('./data/faq.csv', document.baseURI);
+        const faqDataUrl = new URL('data/faq.csv', window.location.href);
         const response = await fetch(faqDataUrl.toString());
         if (!response.ok) {
           throw new Error('Failed to load FAQ CSV');
