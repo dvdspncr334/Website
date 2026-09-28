@@ -120,18 +120,22 @@
       faqList.innerHTML = '';
       faqList.removeAttribute('role');
 
-      const hasExplicitOpenRow = items.some(item => toBoolean(item.open));
-      let renderedCount = 0;
-
-      items.forEach((item) => {
+      const validItems = items.filter((item) => {
         const question = (item.question || '').trim();
         const answer = (item.answer || '').trim();
-        if (!question || !answer) return;
+        return Boolean(question && answer);
+      });
+
+      const hasExplicitOpenRow = validItems.some(item => toBoolean(item.open));
+
+      validItems.forEach((item, index) => {
+        const question = (item.question || '').trim();
+        const answer = (item.answer || '').trim();
 
         const details = document.createElement('details');
         details.className = 'faq-item';
 
-        if (toBoolean(item.open) || (!hasExplicitOpenRow && renderedCount === 0)) {
+        if (toBoolean(item.open) || (!hasExplicitOpenRow && index === 0)) {
           details.open = true;
         }
 
@@ -144,10 +148,9 @@
         details.appendChild(summary);
         details.appendChild(paragraph);
         faqList.appendChild(details);
-        renderedCount++;
       });
 
-      if (renderedCount === 0) {
+      if (validItems.length === 0) {
         faqList.setAttribute('role', 'status');
         faqList.textContent = 'No FAQ entries are available right now.';
       }
@@ -163,7 +166,7 @@
           return;
         }
 
-        const response = await fetch('/data/faq.csv', { cache: 'no-cache' });
+        const response = await fetch('./data/faq.csv', { cache: 'no-cache' });
         if (!response.ok) {
           throw new Error('Failed to load FAQ CSV');
         }
