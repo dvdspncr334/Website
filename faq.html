@@ -164,7 +164,7 @@
         }
 
         const faqDataUrl = new URL('data/faq.csv', document.baseURI);
-        const response = await fetch(faqDataUrl.toString());
+        const response = await fetch(faqDataUrl.toString(), { cache: 'no-cache' });
         if (!response.ok) {
           throw new Error('Failed to load FAQ CSV');
         }
