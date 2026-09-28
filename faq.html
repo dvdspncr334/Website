@@ -28,7 +28,7 @@
   <div class="faq-container">
     <h2>Frequently Asked Questions</h2>
     <div class="faq-list" id="faq-list" aria-live="polite">
-      <p>Loading FAQs...</p>
+      Loading FAQs...
     </div>
   </div>
 
@@ -118,6 +118,7 @@
     function renderFAQs(items) {
       const faqList = document.getElementById('faq-list');
       faqList.innerHTML = '';
+      faqList.removeAttribute('role');
 
       const hasExplicitOpenRow = items.some(item => toBoolean(item.open));
       let renderedCount = 0;
@@ -147,7 +148,8 @@
       });
 
       if (renderedCount === 0) {
-        faqList.innerHTML = '<p role="status">No FAQ entries are available right now.</p>';
+        faqList.setAttribute('role', 'status');
+        faqList.textContent = 'No FAQ entries are available right now.';
       }
     }
 
@@ -156,11 +158,12 @@
 
       try {
         if (window.location.protocol === 'file:') {
-          faqList.innerHTML = '<p role="alert">FAQ data cannot be loaded from file://. Please open the site through a local web server.</p>';
+          faqList.setAttribute('role', 'alert');
+          faqList.textContent = 'FAQ data cannot be loaded from file://. Please open the site through a local web server.';
           return;
         }
 
-        const faqDataUrl = new URL('data/faq.csv', window.location.href);
+        const faqDataUrl = new URL('data/faq.csv', document.baseURI);
         const response = await fetch(faqDataUrl.toString());
         if (!response.ok) {
           throw new Error('Failed to load FAQ CSV');
@@ -172,11 +175,8 @@
       } catch (error) {
         console.error('Error loading FAQ data:', error);
         const errorMessage = error && error.message ? ` (${error.message})` : '';
-        const errorParagraph = document.createElement('p');
-        errorParagraph.setAttribute('role', 'alert');
-        errorParagraph.textContent = `Failed to load FAQ entries${errorMessage}. Please try again later.`;
-        faqList.innerHTML = '';
-        faqList.appendChild(errorParagraph);
+        faqList.setAttribute('role', 'alert');
+        faqList.textContent = `Failed to load FAQ entries${errorMessage}. Please try again later.`;
       }
     }
 
