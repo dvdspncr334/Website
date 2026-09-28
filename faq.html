@@ -46,6 +46,8 @@
     }
 
     function parseCSV(text) {
+      if (!text) return [];
+
       if (text.charCodeAt(0) === 0xFEFF) {
         text = text.slice(1);
       }
@@ -154,7 +156,7 @@
 
       try {
         const faqDataUrl = new URL('./data/faq.csv', document.baseURI);
-        const response = await fetch(faqDataUrl);
+        const response = await fetch(faqDataUrl.toString());
         if (!response.ok) {
           throw new Error('Failed to load FAQ CSV');
         }
