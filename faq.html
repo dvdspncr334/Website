@@ -27,46 +27,8 @@
 
   <div class="faq-container">
     <h2>Frequently Asked Questions</h2>
-    <div class="faq-list">
-      <details class="faq-item" open>
-        <summary>What are your guitar bodies made from?</summary>
-        <p>JGV3D bodies are 3D-printed using PLA+, a durable, performance-oriented material chosen for guitar and bass bodies. PLA+ provides the strength, stability, and everyday playability we want in each build.</p>
-      </details>
-
-      <details class="faq-item">
-        <summary>Are these bodies custom-made?</summary>
-        <p>Many of our bodies are made to order, and some models are kept in stock when available. Routed layouts, filament color choices, and unique configurations may be available depending on the build and the product, but custom painting and finishing are not currently offered.</p>
-      </details>
-
-      <details class="faq-item">
-        <summary>Do you offer custom paint or finish services?</summary>
-        <p>We do not currently offer custom painting or finishing services. If you have a specific filament color in mind, you can still include those details with your order so available options can be reviewed before checkout.</p>
-      </details>
-
-      <details class="faq-item">
-        <summary>How long does production usually take?</summary>
-        <p>Production times vary by model and order volume, but when everything goes according to plan, a body takes about 2 days to fully print. We still do our best to keep lead times transparent and realistic for each product.</p>
-      </details>
-
-      <details class="faq-item">
-        <summary>Do these bodies work with standard hardware?</summary>
-        <p>Most JGV3D bodies are designed to be compatible with standard guitar hardware and common pickup configurations. However, some custom builds may require specific neck, bridge, or routing details, so it is best to review the product notes and customization options before ordering.</p>
-      </details>
-
-      <details class="faq-item">
-        <summary>What if I want a different body shape or routing?</summary>
-        <p>That is exactly the kind of request we are built for. If you are looking for a non-standard layout or a unique body concept, contact us through the site or email and we can talk through the possibilities before you place an order. Painting and custom finishing are not currently offered.</p>
-      </details>
-
-      <details class="faq-item">
-        <summary>How are orders handled and tracked?</summary>
-        <p>Orders are tracked locally in the site during checkout and can be viewed from the Orders page. The current status system is designed to show the order lifecycle from queue to completion while the shop continues to grow and add more automated backend support.</p>
-      </details>
-
-      <details class="faq-item">
-        <summary>Do you ship worldwide?</summary>
-        <p>Shipping availability depends on the destination and current order volume. If you have a question about shipping to your area, reach out directly and we can help confirm the best option for your order.</p>
-      </details>
+    <div class="faq-list" id="faq-list" aria-live="polite">
+      <p>Loading FAQs...</p>
     </div>
   </div>
 
@@ -83,7 +45,119 @@
       } catch (e) {}
     }
 
+    function parseCSV(text) {
+      const rows = [];
+      let row = [];
+      let cell = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const nextChar = text[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            cell += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          row.push(cell.trim());
+          cell = '';
+        } else if ((char === '\n' || char === '\r') && !inQuotes) {
+          if (char === '\r' && nextChar === '\n') i++;
+          row.push(cell.trim());
+          cell = '';
+
+          if (row.some(value => value !== '')) {
+            rows.push(row);
+          }
+          row = [];
+        } else {
+          cell += char;
+        }
+      }
+
+      if (cell.length > 0 || row.length > 0) {
+        row.push(cell.trim());
+        if (row.some(value => value !== '')) {
+          rows.push(row);
+        }
+      }
+
+      if (rows.length < 2) return [];
+
+      const headers = rows[0].map((header) => header.toLowerCase());
+      return rows.slice(1).map((values) => {
+        const item = {};
+        headers.forEach((header, index) => {
+          item[header] = values[index] || '';
+        });
+        return item;
+      });
+    }
+
+    function toBoolean(value) {
+      return String(value).toLowerCase() === 'true' || String(value) === '1';
+    }
+
+    function renderFAQs(items) {
+      const faqList = document.getElementById('faq-list');
+      faqList.innerHTML = '';
+
+      const hasExplicitOpenRow = items.some(item => toBoolean(item.open));
+      let renderedCount = 0;
+
+      items.forEach((item) => {
+        const question = (item.question || '').trim();
+        const answer = (item.answer || '').trim();
+        if (!question || !answer) return;
+
+        const details = document.createElement('details');
+        details.className = 'faq-item';
+
+        if (toBoolean(item.open) || (!hasExplicitOpenRow && renderedCount === 0)) {
+          details.open = true;
+        }
+
+        const summary = document.createElement('summary');
+        summary.textContent = question;
+
+        const paragraph = document.createElement('p');
+        paragraph.textContent = answer;
+
+        details.appendChild(summary);
+        details.appendChild(paragraph);
+        faqList.appendChild(details);
+        renderedCount++;
+      });
+
+      if (renderedCount === 0) {
+        faqList.innerHTML = '<p role="status">No FAQ entries are available right now.</p>';
+      }
+    }
+
+    async function loadFAQs() {
+      const faqList = document.getElementById('faq-list');
+
+      try {
+        const response = await fetch('data/faq.csv?t=' + Date.now(), { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error('Failed to load FAQ CSV');
+        }
+
+        const text = await response.text();
+        const faqItems = parseCSV(text);
+        renderFAQs(faqItems);
+      } catch (error) {
+        console.error('Error loading FAQ data:', error);
+        faqList.innerHTML = '<p role="alert">Failed to load FAQ entries. Please try again later.</p>';
+      }
+    }
+
     updateMiniCart();
+    loadFAQs();
   </script>
 </body>
 </html>
