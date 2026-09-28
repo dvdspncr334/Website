@@ -89,6 +89,11 @@
       if (rows.length < 2) return [];
 
       const headers = rows[0].map((header) => header.trim().toLowerCase());
+      const requiredHeaders = ['question', 'answer', 'open'];
+      const hasRequiredHeaders = requiredHeaders.every((header) => headers.includes(header));
+      if (!hasRequiredHeaders) {
+        throw new Error('FAQ CSV is missing required headers: question, answer, open');
+      }
       return rows.slice(1).map((values) => {
         const item = {};
         headers.forEach((header, index) => {
@@ -142,7 +147,7 @@
       const faqList = document.getElementById('faq-list');
 
       try {
-        const response = await fetch('data/faq.csv', { cache: 'no-store' });
+        const response = await fetch('data/faq.csv');
         if (!response.ok) {
           throw new Error('Failed to load FAQ CSV');
         }
