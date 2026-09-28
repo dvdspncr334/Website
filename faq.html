@@ -46,6 +46,10 @@
     }
 
     function parseCSV(text) {
+      if (text.charCodeAt(0) === 0xFEFF) {
+        text = text.slice(1);
+      }
+
       const rows = [];
       let row = [];
       let cell = '';
@@ -149,8 +153,7 @@
       const faqList = document.getElementById('faq-list');
 
       try {
-        const faqDataUrl = new URL('data/faq.csv', document.baseURI);
-        const response = await fetch(faqDataUrl);
+        const response = await fetch('/data/faq.csv');
         if (!response.ok) {
           throw new Error('Failed to load FAQ CSV');
         }
