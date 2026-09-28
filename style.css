@@ -1141,6 +1141,7 @@ footer a:hover {
   color: #fff;
   border: 1px solid #555;
   border-radius: 6px;
+  min-width: 170px;
   cursor: pointer;
 }
 
@@ -1185,54 +1186,62 @@ footer a:hover {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  list-style: none;
   padding: 0;
-  margin: 0;
+  margin: 16px 0 0;
+  list-style: none;
 }
 
 .order-progress-step {
   position: relative;
-  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
   border-radius: 8px;
-  background: #333;
-  border: 1px solid #444;
-  text-align: center;
-  color: #b8b8b8;
+  border: 1px solid #4a4a4a;
+  background: #2a2a2a;
+  color: #ddd;
   font-weight: bold;
 }
 
-.order-progress-step.is-active {
-  background: rgba(230, 126, 34, 0.15);
-  border-color: #e67e22;
-  color: #fff;
+.order-progress-step span {
+  font-size: 0.8em;
+  color: #d0d0d0;
+  font-weight: normal;
 }
 
 .order-progress-step.is-complete {
-  background: rgba(40, 167, 69, 0.15);
+  background: rgba(40, 167, 69, 0.18);
   border-color: #28a745;
-  color: #fff;
+  color: #d9f7dd;
 }
 
-.order-progress-step span {
-  display: block;
-  font-size: 0.78em;
-  font-weight: normal;
-  margin-top: 6px;
-  color: inherit;
+.order-progress-step.is-active {
+  background: rgba(230, 126, 34, 0.18);
+  border-color: #e67e22;
+  color: #fff1e6;
+}
+
+.order-progress-step.is-active span {
+  color: #f4d3b5;
+}
+
+.order-progress-step.is-complete span {
+  color: #cfead5;
 }
 
 .order-detail-section {
   margin-top: 24px;
 }
 
+.order-detail-section h3 {
+  margin-bottom: 12px;
+}
+
 .order-detail-items {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-}
-
-.order-detail-item {
-  align-items: stretch;
+  gap: 12px;
 }
 
 .order-item-content {
@@ -1244,30 +1253,26 @@ footer a:hover {
 .order-item-side {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   align-items: flex-end;
-  gap: 8px;
-  min-width: 120px;
+  gap: 10px;
 }
 
 .order-total-row {
-  margin-top: 20px;
-  text-align: right;
-  color: #ff9800;
-  font-size: 1.15em;
+  margin-top: 18px;
   font-weight: bold;
+  color: #ff9800;
+  text-align: right;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .header {
     flex-direction: column;
-    gap: 16px;
-    padding: 20px;
+    align-items: flex-start;
+    gap: 12px;
   }
 
   .header-buttons {
     flex-wrap: wrap;
-    justify-content: center;
   }
 
   .cart-item,
