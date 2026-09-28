@@ -163,9 +163,7 @@
           return;
         }
 
-        const pageUrl = `${window.location.origin}${window.location.pathname}`;
-        const faqDataUrl = new URL('data/faq.csv', pageUrl);
-        const response = await fetch(faqDataUrl.toString(), { cache: 'no-cache' });
+        const response = await fetch('/data/faq.csv', { cache: 'no-cache' });
         if (!response.ok) {
           throw new Error('Failed to load FAQ CSV');
         }
