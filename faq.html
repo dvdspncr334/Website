@@ -158,6 +158,8 @@
 
     async function loadFAQs() {
       const faqList = document.getElementById('faq-list');
+      faqList.removeAttribute('role');
+      faqList.textContent = 'Loading FAQs...';
 
       try {
         if (window.location.protocol === 'file:') {
@@ -166,7 +168,8 @@
           return;
         }
 
-        const response = await fetch('./data/faq.csv');
+        const faqDataUrl = new URL('data/faq.csv', document.baseURI);
+        const response = await fetch(faqDataUrl.toString());
         if (!response.ok) {
           throw new Error('Failed to load FAQ CSV');
         }
