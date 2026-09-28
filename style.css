@@ -104,44 +104,72 @@ header h1 {
 .faq-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .faq-item {
-  background: #2a2a2a;
-  border: 1px solid #444;
-  border-left: 4px solid #e67e22;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid #4a4a4a;
+  border-radius: 6px;
   padding: 0;
   overflow: hidden;
+  transition: border-color 0.2s ease, background 0.2s ease;
 }
 
 .faq-item summary {
-  list-style: none;
+  display: list-item;
+  list-style-position: outside;
   cursor: pointer;
-  padding: 16px 18px;
+  padding: 14px 16px;
   color: #fff;
-  font-weight: bold;
-  background: #2a2a2a;
-  transition: background 0.2s ease;
-}
-
-.faq-item summary::-webkit-details-marker {
-  display: none;
+  font-weight: 600;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 .faq-item summary:hover {
-  background: #3a3a3a;
+  background: rgba(230, 126, 34, 0.14);
+}
+
+.faq-item summary:focus-visible {
+  outline: 2px solid #e67e22;
+  outline-offset: -2px;
+  background: rgba(230, 126, 34, 0.16);
+}
+
+@media (forced-colors: active) {
+  .faq-item summary:focus-visible {
+    outline: 2px solid Highlight;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .faq-item[open] {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+
+  .faq-item[open] summary {
+    border-bottom-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+
 }
 
 .faq-item p {
   margin: 0;
-  padding: 0 18px 16px;
+  padding: 10px 16px 16px;
   color: #ddd;
 }
 
+.faq-item[open] {
+  border-color: #e67e22;
+  background: rgba(230, 126, 34, 0.06);
+}
+
 .faq-item[open] summary {
-  border-bottom: 1px solid #444;
+  border-bottom: 1px solid #4a4a4a;
+  background: rgba(230, 126, 34, 0.18);
 }
 
 /* ==========================================================
