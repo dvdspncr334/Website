@@ -86,3 +86,239 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
     }
+
+    function getTitleParts(title) {
+      const value = title || 'Item';
+      const match = value.match(/^(.*?)\s*\((.*)\)$/);
+      if (!match) {
+        return { base: value, details: '' };
+      }
+
+      return {
+        base: match[1].trim() || value,
+        details: match[2].trim()
+      };
+    }
+
+    function getStatusControlId(orderId, index) {
+      const safeOrderId = String(orderId || 'order')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'order';
+      return `status-${safeOrderId}-${index}`;
+    }
+
+    function getOrderLookupKey(order) {
+      return window.JGV3DOrderUtils.getOrderLookupKey(order);
+    }
+
+    function attachImageFallbacks(container) {
+      container.querySelectorAll('img').forEach(img => {
+        img.addEventListener('error', () => {
+          img.src = 'images/placeholder.png';
+        }, { once: true });
+      });
+    }
+
+    function updateOrderStatus(orderKey, nextStatus) {
+      const orders = loadOrders();
+      const updated = orders.map(order => {
+        if (!order || getOrderLookupKey(order) !== orderKey) {
+          return order;
+        }
+        return Object.assign({}, order, { status: nextStatus });
+      });
+      saveOrders(updated);
+      renderOrders();
+    }
+
+    function removeOrder(orderKey) {
+      if (!orderKey) {
+        return;
+      }
+
+      const latestOrders = loadOrders();
+      const targetIndex = latestOrders.findIndex(order => order && getOrderLookupKey(order) === orderKey);
+      if (targetIndex === -1) {
+        window.alert('This order is no longer available in local storage.');
+        renderOrders();
+        return;
+      }
+
+      const targetOrder = latestOrders[targetIndex];
+      const orderLabel = targetOrder && targetOrder.id ? `Order #${targetOrder.id}` : 'this order';
+      const confirmed = window.confirm(`Delete ${orderLabel}? This only removes the locally saved order in this browser.`);
+      if (!confirmed) {
+        return;
+      }
+
+      const matchingBefore = latestOrders.filter(order => order && getOrderLookupKey(order) === orderKey).length;
+      if (matchingBefore !== 1) {
+        window.alert('Unable to safely delete this local order record because its reference is duplicated.');
+        renderOrders();
+        return;
+      }
+      const updatedOrders = latestOrders.slice();
+      updatedOrders.splice(targetIndex, 1);
+
+      try {
+        saveOrders(updatedOrders);
+      } catch (e) {
+        window.alert('Unable to delete this order from local storage right now.');
+        return;
+      }
+
+      const persistedOrders = loadOrders();
+      const matchingAfter = persistedOrders.filter(order => order && getOrderLookupKey(order) === orderKey).length;
+      if (matchingAfter >= matchingBefore) {
+        window.alert('Unable to confirm deletion from local storage. Please try again.');
+        renderOrders();
+        return;
+      }
+
+      renderOrders();
+    }
+
+    function renderOrders() {
+      const list = document.getElementById('orders-list');
+      const orders = loadOrders().slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+      list.innerHTML = '';
+
+      if (!orders.length) {
+        list.innerHTML = `
+          <section class="order-empty-state">
+            <h3>No orders yet</h3>
+            <p>Your completed checkouts will appear here once items move out of the cart.</p>
+            <p><a href="shop.html">Browse the shop</a> to start your next build.</p>
+          </section>
+        `;
+        return;
+      }
+
+      orders.forEach((order, index) => {
+        const items = Array.isArray(order.items) ? order.items.map(normalizeItem) : [];
+        const status = ORDER_STATUSES.includes(order.status) ? order.status : 'In Queue';
+        const statusClass = STATUS_CLASSES[status] || 'status-queued';
+        const itemCount = items.reduce((sum, item) => sum + item.qty, 0);
+        const orderTotal = typeof order.total === 'number'
+          ? order.total
+          : items.reduce((sum, item) => sum + item.price * item.qty, 0);
+        const formattedDate = formatOrderDate(order.date);
+        const orderLookupKey = getOrderLookupKey(order);
+        const canAddressOrder = Boolean(orderLookupKey);
+        const statusControlId = getStatusControlId(orderLookupKey, index);
+        const statusHelpId = `${statusControlId}-help`;
+        const orderDetailsHref = `order-details.html?id=${encodeURIComponent(orderLookupKey)}`;
+        const deleteOrderAriaLabel = `Delete order ${order.id || 'record'}`;
+        const previewItems = items.slice(0, 2).map(item => {
+          const parts = getTitleParts(item.title);
+          const imagePath = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
+          return `
+            <article class="order-preview-item">
+              <img src="${escapeHTML(imagePath)}" alt="${escapeHTML(parts.base)}">
+              <div class="order-preview-content">
+                <h3>${escapeHTML(parts.base)}</h3>
+                ${parts.details ? `<p class="order-item-options"><strong>Selected options:</strong> ${escapeHTML(parts.details)}</p>` : ''}
+                <p class="order-meta">Qty ${item.qty} × ${formatPrice(item.price)}</p>
+              </div>
+              <div class="order-price">${formatPrice(item.qty * item.price)}</div>
+            </article>
+          `;
+        }).join('');
+
+        const extraCount = items.length - 2;
+        const card = document.createElement('section');
+        card.className = 'order-card';
+        card.innerHTML = `
+          <div class="order-header">
+            <div>
+              <div class="order-id">Order #${escapeHTML(order.id || 'Unknown')}</div>
+              <div class="order-date">Placed ${escapeHTML(formattedDate)}</div>
+            </div>
+            <span class="order-status ${statusClass}">${escapeHTML(status)}</span>
+          </div>
+
+          <div class="order-summary-grid">
+            <div class="order-summary-stat">
+              <span class="order-summary-label">Items</span>
+              <span class="order-summary-value">${itemCount}</span>
+            </div>
+            <div class="order-summary-stat">
+              <span class="order-summary-label">Order Total</span>
+              <span class="order-summary-value">${formatPrice(orderTotal)}</span>
+            </div>
+            <div class="order-summary-stat">
+              <span class="order-summary-label">Current Stage</span>
+              <span class="order-summary-value">${escapeHTML(status)}</span>
+            </div>
+          </div>
+
+          <div class="order-preview-list">
+            ${previewItems}
+            ${extraCount > 0 ? `<p class="order-card-copy">+${extraCount} more ${extraCount === 1 ? 'item' : 'items'} in this order.</p>` : ''}
+          </div>
+
+          <div class="order-card-footer">
+            ${canAddressOrder
+              ? `<a class="order-detail-link" href="${orderDetailsHref}">View Order Details</a>`
+              : '<span class="order-card-copy">Order details are unavailable until this local order record has a valid reference.</span>'}
+            ${canAddressOrder
+              ? `<button type="button" class="remove-btn" data-delete-order-key="${escapeHTML(orderLookupKey)}" aria-label="${escapeHTML(deleteOrderAriaLabel)}">Delete Order</button>`
+              : ''}
+            <fieldset class="order-status-form" data-order-key="${escapeHTML(orderLookupKey)}">
+              <legend class="order-status-legend">Demo status for order ${escapeHTML(order.id || 'this order')}</legend>
+              <label for="${escapeHTML(statusControlId)}">Demo status</label>
+              <select class="order-status-select" id="${escapeHTML(statusControlId)}" aria-describedby="${escapeHTML(statusHelpId)}" ${canAddressOrder ? '' : 'disabled aria-disabled="true"'}>
+                ${ORDER_STATUSES.map(option => `<option value="${escapeHTML(option)}" ${option === status ? 'selected' : ''}>${escapeHTML(option)}</option>`).join('')}
+              </select>
+              <p class="order-status-help" id="${escapeHTML(statusHelpId)}">${canAddressOrder ? 'Temporary manual control while backend/printer sync is not connected yet.' : 'This local order record needs a valid reference before its demo status can be updated.'}</p>
+            </fieldset>
+          </div>
+        `;
+
+        attachImageFallbacks(card);
+
+        const select = card.querySelector('.order-status-select');
+        if (select && canAddressOrder) {
+          select.addEventListener('change', (event) => {
+            updateOrderStatus(orderLookupKey, event.target.value);
+          });
+        }
+
+        const deleteButton = card.querySelector('[data-delete-order-key]');
+        if (deleteButton && canAddressOrder) {
+          deleteButton.addEventListener('click', () => {
+            removeOrder(orderLookupKey);
+          });
+        }
+
+        list.appendChild(card);
+      });
+    }
+
+    function updateMiniCart() {
+      try {
+        const cart = JSON.parse(localStorage.getItem(CART_KEY)) || [];
+        const totalItems = cart.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+        const miniCartCount = document.getElementById('mini-cart-count');
+        if (miniCartCount) {
+          miniCartCount.textContent = totalItems;
+          miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
+        }
+      } catch (e) {}
+    }
+
+    window.addEventListener('storage', (event) => {
+      if (event.key === ORDERS_KEY) {
+        renderOrders();
+      }
+      if (event.key === CART_KEY) {
+        updateMiniCart();
+      }
+    });
+
+    renderOrders();
+    updateMiniCart();
+  </script>
+</body>
+</html>
