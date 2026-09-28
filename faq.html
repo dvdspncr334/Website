@@ -155,6 +155,11 @@
       const faqList = document.getElementById('faq-list');
 
       try {
+        if (window.location.protocol === 'file:') {
+          faqList.innerHTML = '<p role="alert">FAQ data cannot be loaded from file://. Please open the site through a local web server.</p>';
+          return;
+        }
+
         const faqDataUrl = new URL('./data/faq.csv', document.baseURI);
         const response = await fetch(faqDataUrl.toString());
         if (!response.ok) {
@@ -166,7 +171,12 @@
         renderFAQs(faqItems);
       } catch (error) {
         console.error('Error loading FAQ data:', error);
-        faqList.innerHTML = '<p role="alert">Failed to load FAQ entries. Please try again later.</p>';
+        const errorMessage = error && error.message ? ` (${error.message})` : '';
+        const errorParagraph = document.createElement('p');
+        errorParagraph.setAttribute('role', 'alert');
+        errorParagraph.textContent = `Failed to load FAQ entries${errorMessage}. Please try again later.`;
+        faqList.innerHTML = '';
+        faqList.appendChild(errorParagraph);
       }
     }
 
