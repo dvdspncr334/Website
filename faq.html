@@ -63,11 +63,11 @@
             inQuotes = !inQuotes;
           }
         } else if (char === ',' && !inQuotes) {
-          row.push(cell.trim());
+          row.push(cell);
           cell = '';
         } else if ((char === '\n' || char === '\r') && !inQuotes) {
           if (char === '\r' && nextChar === '\n') i++;
-          row.push(cell.trim());
+          row.push(cell);
           cell = '';
 
           if (row.some(value => value !== '')) {
@@ -80,7 +80,7 @@
       }
 
       if (cell.length > 0 || row.length > 0) {
-        row.push(cell.trim());
+        row.push(cell);
         if (row.some(value => value !== '')) {
           rows.push(row);
         }
@@ -88,7 +88,7 @@
 
       if (rows.length < 2) return [];
 
-      const headers = rows[0].map((header) => header.toLowerCase());
+      const headers = rows[0].map((header) => header.trim().toLowerCase());
       return rows.slice(1).map((values) => {
         const item = {};
         headers.forEach((header, index) => {
@@ -142,7 +142,7 @@
       const faqList = document.getElementById('faq-list');
 
       try {
-        const response = await fetch('data/faq.csv?t=' + Date.now(), { cache: 'no-store' });
+        const response = await fetch('data/faq.csv', { cache: 'no-store' });
         if (!response.ok) {
           throw new Error('Failed to load FAQ CSV');
         }
