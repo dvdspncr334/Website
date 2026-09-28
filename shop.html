@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Header -->
   <header>
     <h1>JGV3D Guitar Bodies</h1>
     <div class="header-buttons">
@@ -24,12 +25,17 @@
     </div>
   </header>
 
+  <!-- Toast -->
   <div id="toast" class="toast" aria-live="polite"></div>
 
+  <!-- Main Shop Content -->
   <div class="container">
+    <!-- Sidebar with filters -->
     <div class="sidebar">
       <h3>Categories</h3>
-      <div class="categories" id="categories-container"></div>
+      <div class="categories" id="categories-container">
+        <!-- Auto-generated from CSV -->
+      </div>
       <h3 style="margin-top: 20px;">Subcategories</h3>
       <div id="subcategory-container">
         <select class="subcategory-select" id="subcategory-filter">
@@ -37,7 +43,9 @@
         </select>
       </div>
     </div>
+    <!-- Divider Line -->
     <div class="divider"></div>
+    <!-- Products container -->
     <div class="products-container">
       <h2>Shop Guitar Bodies</h2>
       <div class="search-sort-controls">
@@ -61,7 +69,7 @@
     const DRAFT_CUSTOM_NOTES_KEY = 'jgv3d_custom_note_drafts';
     const PRODUCT_OPTIONS_KEY = 'jgv3d_shop_selected_options';
     const CUSTOM_NOTE_MAX_LENGTH = 160;
-
+    
     let allProducts = [];
     let currentCategory = localStorage.getItem(CATEGORY_KEY) || 'all';
     let currentSubcategory = localStorage.getItem(SUBCATEGORY_KEY) || 'all';
@@ -73,3 +81,750 @@
     const categoriesContainer = document.getElementById('categories-container');
     const subcategoryFilter = document.getElementById('subcategory-filter');
     const searchBox = document.getElementById('search-box');
+    const sortSelect = document.getElementById('sort-select');
+
+    /* ---------- CSV Parsing ---------- */
+    function parseCSVLine(line) {
+      const values = [];
+      let current = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (char === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          values.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+
+      values.push(current.trim());
+      return values;
+    }
+
+    function parseCSV(text) {
+      const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+      if (lines.length < 2) return [];
+      const headers = parseCSVLine(lines[0]);
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        if (values.length === headers.length) {
+          const obj = {};
+          headers.forEach((h, idx) => { obj[h] = values[idx]; });
+          rows.push(obj);
+        } else {
+          console.warn('Skipping malformed CSV row:', lines[i]);
+        }
+      }
+      return rows;
+    }
+
+    function getDraftNotes() {
+      try {
+        return JSON.parse(localStorage.getItem(DRAFT_CUSTOM_NOTES_KEY)) || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function saveDraftNotes(drafts) {
+      localStorage.setItem(DRAFT_CUSTOM_NOTES_KEY, JSON.stringify(drafts));
+    }
+
+    function getDraftNote(itemId) {
+      if (!itemId) return '';
+      const drafts = getDraftNotes();
+      return drafts[itemId] || '';
+    }
+
+    function setDraftNote(itemId, value) {
+      if (!itemId) return;
+      const drafts = getDraftNotes();
+      if (value && value.trim()) {
+        drafts[itemId] = value;
+      } else {
+        delete drafts[itemId];
+      }
+      saveDraftNotes(drafts);
+    }
+
+    /* ---------- Product Option Selection Persistence ---------- */
+    function getSavedProductOptions() {
+      try {
+        return JSON.parse(localStorage.getItem(PRODUCT_OPTIONS_KEY)) || {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function getItemKey(item) {
+      return item.id || item.title || '';
+    }
+
+    function saveProductOption(item, key, value) {
+      const itemKey = getItemKey(item);
+      if (!itemKey) return;
+      const allOptions = getSavedProductOptions();
+      const itemOptions = allOptions[itemKey] || {};
+      itemOptions[key] = value;
+      allOptions[itemKey] = itemOptions;
+      try {
+        localStorage.setItem(PRODUCT_OPTIONS_KEY, JSON.stringify(allOptions));
+      } catch (e) {}
+    }
+
+    function getSavedProductOption(item, key) {
+      const itemKey = getItemKey(item);
+      if (!itemKey) return null;
+      const allOptions = getSavedProductOptions();
+      const itemOptions = allOptions[itemKey];
+      if (!itemOptions) return null;
+      return Object.prototype.hasOwnProperty.call(itemOptions, key) ? itemOptions[key] : null;
+    }
+
+    function getDisplayPrice(item) {
+      const basePrice = parseFloat(item.price);
+      const discount = parseFloat(item.discount || '0');
+      if (isNaN(basePrice)) return NaN;
+      if (discount > 0 && !isNaN(discount)) {
+        return basePrice * (1 - discount / 100);
+      }
+      return basePrice;
+    }
+
+    /* ---------- Product Card Creation ---------- */
+    function createProductCard(item) {
+      const PLACEHOLDER_IMG = 'images/placeholder.png';
+      
+      const card = document.createElement('div');
+      card.className = 'product';
+      card.dataset.id = item.id || '';
+      card.dataset.category = item.category || '';
+      card.dataset.subcategory = item.subcategory || '';
+      card.dataset.title = item.title || '';
+      card.dataset.price = item.price || '0';
+      card.dataset.handedness = item.handedness || '';
+      card.dataset.colors = item.colors || '';
+      card.dataset.pickupConfigs = item.pickup_configs || '';
+      card.dataset.customColorFee = item.custom_color_fee || '0';
+      card.dataset.colorImages = item.color_images || '';
+      card.dataset.discount = item.discount || '0';
+
+      const basePrice = parseFloat(item.price);
+      const discount = parseFloat(item.discount || '0');
+      const hasDiscount = discount > 0 && !isNaN(discount) && !isNaN(basePrice);
+      const salePrice = hasDiscount ? basePrice * (1 - discount / 100) : basePrice;
+      const customColorFee = parseFloat(item.custom_color_fee || '0');
+      const hasCustomColorOption = customColorFee > 0;
+      
+      let priceHTML = '';
+      if (hasDiscount) {
+        priceHTML = `
+          <div class="price-container">
+            <span class="original-price">$${basePrice.toFixed(2)}</span>
+            <span class="sale-price">$${salePrice.toFixed(2)}</span>
+          </div>
+        `;
+      } else {
+        priceHTML = `<div class="product-price">${isNaN(basePrice) ? 'Contact for price' : `$${basePrice.toFixed(2)}`}</div>`;
+      }
+
+      if (hasCustomColorOption) {
+        priceHTML += `<div class="custom-fee-note">Custom color fee: +$${customColorFee.toFixed(2)}</div>`;
+      }
+
+      const imgSrc = item.img || PLACEHOLDER_IMG;
+
+      // Build badges
+      let badgesHTML = '';
+      const badges = [];
+      if (item.tag && item.tag.trim()) {
+        const tagClass = item.tag.toLowerCase().replace(/\s+/g, '-');
+        badges.push(`<span class="product-badge badge-${tagClass}">${item.tag}</span>`);
+      }
+      if (item.status && item.status.trim()) {
+        badges.push(`<span class="product-badge badge-${item.status}">${item.status.replace(/-/g, ' ')}</span>`);
+      }
+      if (badges.length > 0) {
+        badgesHTML = `<div class="product-badges">${badges.join('')}</div>`;
+      }
+
+      // Parse options
+      const colorOptions = (item.colors || '').split('|').filter(c => c);
+      const pickupOptions = (item.pickup_configs || '').split('|').filter(p => p);
+      const draftNote = getDraftNote(item.id || '');
+
+      // Restore saved selections (fall back gracefully if not previously saved)
+      const savedHandedness = getSavedProductOption(item, 'handedness');
+      const savedPickup = getSavedProductOption(item, 'pickup');
+      const savedColor = getSavedProductOption(item, 'color');
+
+      let optionsHTML = '';
+      
+      // Handedness selector - show if handedness is specified
+      if (item.handedness && item.handedness !== '') {
+        if (item.handedness === 'both') {
+          optionsHTML += `
+            <div class="option-group">
+              <label class="option-label">Handedness:</label>
+              <select class="option-select handedness-select">
+                <option value="right"${savedHandedness === 'right' ? ' selected' : ''}>Right</option>
+                <option value="left"${savedHandedness === 'left' ? ' selected' : ''}>Left</option>
+              </select>
+            </div>
+          `;
+        } else if (item.handedness === 'right' || item.handedness === 'left') {
+          optionsHTML += `
+            <div class="option-group">
+              <label class="option-label">Handedness:</label>
+              <select class="option-select handedness-select">
+                <option value="${item.handedness}">${item.handedness.charAt(0).toUpperCase() + item.handedness.slice(1)}</option>
+              </select>
+            </div>
+          `;
+        }
+      }
+
+      // Pickup configuration selector
+      if (pickupOptions.length > 1) {
+        optionsHTML += `
+          <div class="option-group">
+            <label class="option-label">Pickup Config:</label>
+            <select class="option-select pickup-select">
+              ${pickupOptions.map(p => `<option value="${p}"${savedPickup === p ? ' selected' : ''}>${p}</option>`).join('')}
+            </select>
+          </div>
+        `;
+      }
+
+      // Color selector with predefined colors + optional custom color
+      if (colorOptions.length > 0 || hasCustomColorOption) {
+        optionsHTML += `
+          <div class="option-group">
+            <label class="option-label">Color:</label>
+            <select class="option-select color-select">
+              ${colorOptions.map(c => `<option value="${c}"${savedColor === c ? ' selected' : ''}>${c}</option>`).join('')}
+              ${hasCustomColorOption ? `<option value="custom"${savedColor === 'custom' ? ' selected' : ''}>Custom Color (+$${customColorFee.toFixed(2)})</option>` : ''}
+            </select>
+          </div>
+        `;
+      }
+
+      if (hasCustomColorOption) {
+        optionsHTML += `
+          <div class="option-group custom-color-note-group" style="display:none;">
+            <label class="option-label">Custom Color / Notes:</label>
+            <textarea class="option-select custom-color-note auto-resize-note" rows="3" maxlength="${CUSTOM_NOTE_MAX_LENGTH}" placeholder="Enter the custom color or any order notes...">${draftNote}</textarea>
+            <div class="custom-color-help">Describe the color, finish, burst, sparkle, or other special requests.</div>
+            <div class="custom-color-meta">
+              <span class="custom-color-limit">Max ${CUSTOM_NOTE_MAX_LENGTH} characters</span>
+              <span class="custom-color-counter">${draftNote.length}/${CUSTOM_NOTE_MAX_LENGTH}</span>
+            </div>
+          </div>
+        `;
+      }
+
+      // Build related items
+      const relatedItems = getRelatedItems(item);
+      let relatedHTML = '';
+      if (relatedItems.length > 0) {
+        const relatedLinks = relatedItems.map(r => 
+          `<a class="related-item-link" data-target-id="${r.id}">${r.title}</a>`
+        ).join('');
+        relatedHTML = `
+          <div class="related-items">
+            <div class="related-items-title">Related Items:</div>
+            <div class="related-items-list">${relatedLinks}</div>
+          </div>
+        `;
+      }
+
+      card.innerHTML = `
+        <img src="${imgSrc}" alt="${item.title || 'Product'}" onerror="this.src='${PLACEHOLDER_IMG}'" class="product-img">
+        <div class="product-title">${item.title || ''}</div>
+        ${badgesHTML}
+        ${priceHTML}
+        ${optionsHTML ? `<div class="product-options">${optionsHTML}</div>` : ''}
+        <div class="qty-control">
+          <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
+          <span class="qty-value">1</span>
+          <button class="qty-btn plus" aria-label="Increase quantity">+</button>
+        </div>
+        <button class="add-btn">Add to Cart</button>
+        ${relatedHTML}
+      `;
+
+      wireProductCard(card, item);
+      return card;
+    }
+
+    /* ---------- Get Related Items ---------- */
+    function getRelatedItems(item) {
+      if (!item.id) return [];
+      
+      const related = allProducts.filter(p => {
+        if (p.id === item.id) return false;
+        if (p.category === item.category && p.subcategory === item.subcategory) return true;
+        if (p.category === item.category) return true;
+        return false;
+      });
+      
+      // Prioritize same subcategory, then same category
+      related.sort((a, b) => {
+        const aSubMatch = a.subcategory === item.subcategory ? 1 : 0;
+        const bSubMatch = b.subcategory === item.subcategory ? 1 : 0;
+        return bSubMatch - aSubMatch;
+      });
+      
+      return related.slice(0, 3);
+    }
+
+    /* ---------- Wire Product Card Events ---------- */
+    function wireProductCard(card, item) {
+      const minus = card.querySelector('.qty-btn.minus');
+      const plus = card.querySelector('.qty-btn.plus');
+      const display = card.querySelector('.qty-value');
+      const addBtn = card.querySelector('.add-btn');
+      const handednessSelect = card.querySelector('.handedness-select');
+      const pickupSelect = card.querySelector('.pickup-select');
+      const colorSelect = card.querySelector('.color-select');
+      const customColorNoteGroup = card.querySelector('.custom-color-note-group');
+      const customColorNote = card.querySelector('.custom-color-note');
+      const customColorCounter = card.querySelector('.custom-color-counter');
+      const productImg = card.querySelector('.product-img');
+
+      function autoResizeTextarea(textarea) {
+        if (!textarea) return;
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 180) + 'px';
+      }
+
+      if (minus && plus && display) {
+        minus.addEventListener('click', () => {
+          const current = parseInt(display.textContent || '1', 10);
+          display.textContent = Math.max(1, current - 1);
+        });
+        plus.addEventListener('click', () => {
+          const current = parseInt(display.textContent || '1', 10);
+          display.textContent = current + 1;
+        });
+      }
+
+      if (addBtn) {
+        addBtn.addEventListener('click', () => addToCart(card, item));
+      }
+
+      if (handednessSelect) {
+        handednessSelect.addEventListener('change', () => {
+          saveProductOption(item, 'handedness', handednessSelect.value);
+        });
+      }
+
+      if (pickupSelect) {
+        pickupSelect.addEventListener('change', () => {
+          saveProductOption(item, 'pickup', pickupSelect.value);
+        });
+      }
+
+      if (customColorNote) {
+        const updateCustomNoteUI = () => {
+          if (customColorCounter) {
+            customColorCounter.textContent = `${customColorNote.value.length}/${CUSTOM_NOTE_MAX_LENGTH}`;
+          }
+          autoResizeTextarea(customColorNote);
+        };
+
+        customColorNote.addEventListener('input', () => {
+          setDraftNote(item.id || '', customColorNote.value);
+          updateCustomNoteUI();
+        });
+
+        updateCustomNoteUI();
+      }
+
+      // Color image swapping + custom note toggle
+      if (colorSelect) {
+        const colorImageMap = {};
+        if (item.color_images) {
+          const pairs = item.color_images.split('|');
+          pairs.forEach(pair => {
+            const [color, imgPath] = pair.split(':');
+            if (color && imgPath) {
+              colorImageMap[color.trim()] = imgPath.trim();
+            }
+          });
+        }
+
+        const syncCustomColorUI = () => {
+          const selectedColor = colorSelect.value;
+          const isCustom = selectedColor === 'custom';
+
+          if (customColorNoteGroup) {
+            customColorNoteGroup.style.display = isCustom ? 'flex' : 'none';
+          }
+
+          if (customColorNote) {
+            if (isCustom) {
+              const savedDraft = getDraftNote(item.id || '');
+              if (savedDraft && !customColorNote.value) {
+                customColorNote.value = savedDraft;
+              }
+              autoResizeTextarea(customColorNote);
+            } else {
+              autoResizeTextarea(customColorNote);
+            }
+          }
+
+          if (productImg) {
+            if (!isCustom && colorImageMap[selectedColor]) {
+              productImg.src = colorImageMap[selectedColor];
+              productImg.onerror = () => { productImg.src = 'images/placeholder.png'; };
+            } else if (item.img) {
+              productImg.src = item.img;
+              productImg.onerror = () => { productImg.src = 'images/placeholder.png'; };
+            }
+          }
+        };
+
+        colorSelect.addEventListener('change', () => {
+          saveProductOption(item, 'color', colorSelect.value);
+          syncCustomColorUI();
+        });
+        syncCustomColorUI();
+      }
+
+      // Related items navigation
+      const relatedLinks = card.querySelectorAll('.related-item-link');
+      relatedLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const targetId = link.dataset.targetId;
+          const targetCard = document.querySelector(`.product[data-id="${targetId}"]`);
+          if (targetCard) {
+            targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            targetCard.style.outline = '2px solid #e67e22';
+            setTimeout(() => {
+              targetCard.style.outline = '';
+            }, 2000);
+          }
+        });
+      });
+    }
+
+    /* ---------- Load Products from CSV ---------- */
+    async function loadProducts() {
+      try {
+        const response = await fetch('data/shop.csv?t=' + Date.now(), {
+          cache: 'no-store'
+        });
+        if (!response.ok) throw new Error('Failed to load shop.csv');
+        const text = await response.text();
+        allProducts = parseCSV(text);
+
+        if (allProducts.length === 0) {
+          productsContainer.innerHTML = '<p style="color:#ddd;">No products available.</p>';
+          return;
+        }
+
+        generateCategoryButtons();
+        updateSubcategoryFilter();
+        renderProducts();
+      } catch (error) {
+        console.error('Error loading products:', error);
+        productsContainer.innerHTML = '<p style="color:#ddd;">Failed to load products. Please try again later.</p>';
+      }
+    }
+
+    /* ---------- Generate Category Buttons ---------- */
+    function generateCategoryButtons() {
+      const categories = new Set();
+      allProducts.forEach(p => {
+        if (p.category) categories.add(p.category);
+      });
+
+      const sortedCategories = Array.from(categories).sort();
+      
+      categoriesContainer.innerHTML = '';
+      
+      // Add "All" button
+      const allBtn = document.createElement('button');
+      allBtn.textContent = 'All';
+      allBtn.onclick = () => filterByCategory('all');
+      categoriesContainer.appendChild(allBtn);
+
+      // Add category buttons
+      sortedCategories.forEach(cat => {
+        const btn = document.createElement('button');
+        btn.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
+        btn.onclick = () => filterByCategory(cat);
+        categoriesContainer.appendChild(btn);
+      });
+    }
+
+    /* ---------- Update Subcategory Filter ---------- */
+    function updateSubcategoryFilter() {
+      const subcategories = new Set();
+      allProducts.forEach(p => {
+        if (currentCategory === 'all' || p.category === currentCategory) {
+          if (p.subcategory) subcategories.add(p.subcategory);
+        }
+      });
+
+      const sortedSubcategories = Array.from(subcategories).sort();
+      
+      subcategoryFilter.innerHTML = '<option value="all">All Subcategories</option>';
+      sortedSubcategories.forEach(sub => {
+        const option = document.createElement('option');
+        option.value = sub;
+        option.textContent = sub.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        subcategoryFilter.appendChild(option);
+      });
+
+      subcategoryFilter.value = currentSubcategory;
+    }
+
+    /* ---------- Filter and Render ---------- */
+    function filterByCategory(category) {
+      currentCategory = category;
+      currentSubcategory = 'all';
+      localStorage.setItem(CATEGORY_KEY, category);
+      localStorage.setItem(SUBCATEGORY_KEY, 'all');
+      updateSubcategoryFilter();
+      renderProducts();
+    }
+
+    function filterBySubcategory() {
+      currentSubcategory = subcategoryFilter.value;
+      localStorage.setItem(SUBCATEGORY_KEY, currentSubcategory);
+      renderProducts();
+    }
+
+    function applySearch() {
+      searchQuery = searchBox.value.toLowerCase();
+      renderProducts();
+    }
+
+    function applySort() {
+      currentSort = sortSelect.value;
+      renderProducts();
+    }
+
+    function matchesFilters(item) {
+      // Category filter
+      if (currentCategory !== 'all' && item.category !== currentCategory) {
+        return false;
+      }
+
+      // Subcategory filter
+      if (currentSubcategory !== 'all' && item.subcategory !== currentSubcategory) {
+        return false;
+      }
+
+      // Search filter
+      if (searchQuery) {
+        const searchText = [
+          item.title,
+          item.category,
+          item.subcategory,
+          item.colors,
+          item.pickup_configs
+        ].join(' ').toLowerCase();
+        
+        if (!searchText.includes(searchQuery)) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    function renderProducts() {
+      const filtered = allProducts.filter(matchesFilters);
+
+      // Sort products
+      let sorted = [...filtered];
+      if (currentSort === 'title-asc') {
+        sorted.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+      } else if (currentSort === 'price-asc') {
+        sorted.sort((a, b) => parseFloat(a.price || 0) - parseFloat(b.price || 0));
+      } else if (currentSort === 'price-desc') {
+        sorted.sort((a, b) => parseFloat(b.price || 0) - parseFloat(a.price || 0));
+      } else {
+        // Default: category then title
+        sorted.sort((a, b) => {
+          const catCmp = (a.category || '').localeCompare(b.category || '');
+          return catCmp !== 0 ? catCmp : (a.title || '').localeCompare(b.title || '');
+        });
+      }
+
+      productsContainer.innerHTML = '';
+      
+      if (sorted.length === 0) {
+        productsContainer.innerHTML = '<p style="color:#ddd;">No products match your filters.</p>';
+        return;
+      }
+
+      sorted.forEach(item => {
+        const card = createProductCard(item);
+        productsContainer.appendChild(card);
+      });
+    }
+
+    /* ---------- Cart Functions ---------- */
+    function loadCart() {
+      try {
+        return JSON.parse(localStorage.getItem(CART_KEY)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveCart(cart) {
+      localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      if (!toast) return;
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    function getSelectedOptions(card) {
+      const options = [];
+      
+      const handednessSelect = card.querySelector('.handedness-select');
+      if (handednessSelect) {
+        options.push(handednessSelect.value.charAt(0).toUpperCase() + handednessSelect.value.slice(1));
+      }
+
+      const pickupSelect = card.querySelector('.pickup-select');
+      if (pickupSelect) {
+        options.push(pickupSelect.value);
+      }
+
+      const colorSelect = card.querySelector('.color-select');
+      if (colorSelect) {
+        if (colorSelect.value === 'custom') {
+          const customColorNote = card.querySelector('.custom-color-note');
+          const customText = customColorNote ? customColorNote.value.trim() : '';
+          options.push(customText ? `Custom Color: ${customText}` : 'Custom Color');
+        } else {
+          options.push(colorSelect.value);
+        }
+      }
+
+      return options;
+    }
+
+    function addToCart(card, item) {
+      const id = item.id;
+      const baseTitle = item.title || 'Item';
+      const basePrice = parseFloat(item.price || 0);
+      const discount = parseFloat(item.discount || 0);
+      const qty = parseInt(card.querySelector('.qty-value')?.textContent || '1', 10);
+      const colorSelect = card.querySelector('.color-select');
+      const customColorNote = card.querySelector('.custom-color-note');
+      const isCustomColor = colorSelect && colorSelect.value === 'custom';
+      const customText = customColorNote ? customColorNote.value.trim() : '';
+
+      // Use the image currently displayed on the card (reflects the
+      // selected color variant), falling back to the item's default image.
+      const productImg = card.querySelector('.product-img');
+      const img = (productImg && productImg.src) ? productImg.src : (item.img || 'images/placeholder.png');
+
+      if (!id || !qty || qty < 1) return;
+
+      if (isCustomColor && !customText) {
+        showToast('Please enter the custom color or notes before adding to cart');
+        if (customColorNote) customColorNote.focus();
+        return;
+      }
+
+      // Get selected options
+      const options = getSelectedOptions(card);
+      const optionsStr = options.length > 0 ? ` (${options.join(', ')})` : '';
+      const title = baseTitle + optionsStr;
+
+      // Calculate price with discount and custom color fee
+      const customColorFee = parseFloat(item.custom_color_fee || 0);
+      let price = basePrice;
+      
+      // Apply discount first
+      if (discount > 0 && !isNaN(discount)) {
+        price = price * (1 - discount / 100);
+      }
+      
+      // Then add custom color fee if applicable
+      if (isCustomColor && customColorFee > 0) {
+        price += customColorFee;
+      }
+
+      // Create unique cart ID with options
+      const cartId = id + optionsStr;
+
+      const cart = loadCart();
+      const existing = cart.find(item => item.id === cartId);
+      if (existing) {
+        existing.qty += qty;
+        existing.img = img;
+      } else {
+        cart.push({ id: cartId, title, price, img, qty });
+      }
+      saveCart(cart);
+      updateMiniCart();
+
+      // Reset qty to 1 and show toast
+      const qtyEl = card.querySelector('.qty-value');
+      if (qtyEl) qtyEl.textContent = '1';
+      if (isCustomColor && customColorNote) {
+        customColorNote.value = '';
+        setDraftNote(id, '');
+        customColorNote.style.height = 'auto';
+        const customColorCounter = card.querySelector('.custom-color-counter');
+        if (customColorCounter) {
+          customColorCounter.textContent = `0/${CUSTOM_NOTE_MAX_LENGTH}`;
+        }
+      }
+      showToast(`${qty} × ${title} added to cart`);
+    }
+
+    /* ---------- Event Listeners ---------- */
+    subcategoryFilter.addEventListener('change', filterBySubcategory);
+    
+    let searchDebounce;
+    searchBox.addEventListener('input', () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(applySearch, 300);
+    });
+
+    sortSelect.addEventListener('change', applySort);
+
+    /* ---------- Initialize ---------- */
+    function updateMiniCart() {
+      const cart = loadCart();
+      const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+      const miniCartCount = document.getElementById('mini-cart-count');
+      if (miniCartCount) {
+        miniCartCount.textContent = totalItems;
+        miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
+      }
+    }
+
+    loadProducts();
+    updateMiniCart();
+  </script>
+</body>
+</html>
