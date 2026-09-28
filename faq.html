@@ -176,9 +176,8 @@
         renderFAQs(faqItems);
       } catch (error) {
         console.error('Error loading FAQ data:', error);
-        const errorMessage = error && error.message ? ` (${error.message})` : '';
         faqList.setAttribute('role', 'alert');
-        faqList.textContent = `Failed to load FAQ entries${errorMessage}. Please try again later.`;
+        faqList.textContent = 'Failed to load FAQ entries. Please try again later.';
       }
     }
 
