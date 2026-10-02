@@ -5,6 +5,8 @@
   <link rel="icon" type="image/x-icon" href="images/favicon.ico">
   <title>Login | JGV3D Guitar Bodies</title>
   <link rel="stylesheet" href="style.css">
+  <script id="google-identity" src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="auth-client.js"></script>
 </head>
 <body>
   <header class="header">
@@ -27,25 +29,23 @@
   <div class="about-container">
     <h2>Account Login</h2>
     <p>
-      We're currently building out account and login functionality for JGV3D. This page is a
-      <strong style="color:#e67e22;">work in progress</strong> — check back soon!
+      Sign in securely with your Google account. Your cart stays in this browser.
     </p>
 
-    <form onsubmit="return false;" style="max-width:360px; margin:20px auto; text-align:left; display:flex; flex-direction:column; gap:12px;">
-      <div class="option-group">
-        <label class="option-label" for="login-email">Email</label>
-        <input type="email" id="login-email" class="option-select" placeholder="you@example.com" disabled>
+    <div style="max-width:360px; margin:20px auto; text-align:center;">
+      <p id="auth-status" role="status" aria-live="polite">Loading sign-in…</p>
+      <div id="google-signin"></div>
+      <div id="signed-in" hidden>
+        <p id="auth-user"></p>
+        <p><a href="orders.html">View My Orders</a></p>
+        <button type="button" id="sign-out" class="add-btn">Sign out</button>
       </div>
-      <div class="option-group">
-        <label class="option-label" for="login-password">Password</label>
-        <input type="password" id="login-password" class="option-select" placeholder="••••••••" disabled>
-      </div>
-      <button type="submit" class="add-btn" disabled style="opacity:0.6; cursor:not-allowed;">Login (Coming Soon)</button>
+      <noscript>JavaScript is required to sign in with Google.</noscript>
       <p class="custom-color-help" style="text-align:center;">
-        Accounts aren't available yet. In the meantime, feel free to
-        <a href="mailto:support@jgv3d.com">contact us</a> with any questions.
+        Questions? Feel free to
+        <a href="mailto:support@jgv3d.com">contact us</a>.
       </p>
-    </form>
+    </div>
   </div>
 
   <script>
