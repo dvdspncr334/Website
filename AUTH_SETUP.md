@@ -39,7 +39,9 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 Edit `.env`:
 
-- Replace `GOOGLE_CLIENT_ID` with your real public client ID.
+- `.env.example` includes the supplied public `GOOGLE_CLIENT_ID`. Keep it for
+  this Google Web client, or replace it if using a different client. Set the same
+  value in your production host's environment settings.
 - Replace `SESSION_SECRET` with the generated random value (at least 32 characters).
 - Keep `SITE_ORIGIN=http://localhost:3000`, `NODE_ENV=development`,
   `SESSION_COOKIE_SECURE=false`, `TRUST_PROXY=0` for local HTTP testing.
