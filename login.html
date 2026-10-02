@@ -5,6 +5,7 @@
   <link rel="icon" type="image/x-icon" href="images/favicon.ico">
   <title>Login | JGV3D Guitar Bodies</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
   <header class="header">
@@ -26,29 +27,97 @@
 
   <div class="about-container">
     <h2>Account Login</h2>
-    <p>
-      We're currently building out account and login functionality for JGV3D. This page is a
-      <strong style="color:#e67e22;">work in progress</strong> — check back soon!
-    </p>
+    <p>Sign in with your Google account to access your orders.</p>
 
-    <form onsubmit="return false;" style="max-width:360px; margin:20px auto; text-align:left; display:flex; flex-direction:column; gap:12px;">
-      <div class="option-group">
-        <label class="option-label" for="login-email">Email</label>
-        <input type="email" id="login-email" class="option-select" placeholder="you@example.com" disabled>
+    <div style="max-width:360px; margin:20px auto; text-align:center;">
+      <div id="login-container" style="display: none;">
+        <div id="g_id_onload"
+             data-client_id="86073894660-lemggkcbu3ah4bigq4vp952quj5pdnqh.apps.googleusercontent.com"
+             data-callback="handleCredentialResponse">
+        </div>
+        <div class="g_id_signin" data-type="standard"></div>
       </div>
-      <div class="option-group">
-        <label class="option-label" for="login-password">Password</label>
-        <input type="password" id="login-password" class="option-select" placeholder="••••••••" disabled>
+      <div id="loading-message" style="display: none; padding: 20px;">
+        <p>Loading sign-in...</p>
       </div>
-      <button type="submit" class="add-btn" disabled style="opacity:0.6; cursor:not-allowed;">Login (Coming Soon)</button>
-      <p class="custom-color-help" style="text-align:center;">
-        Accounts aren't available yet. In the meantime, feel free to
-        <a href="mailto:support@jgv3d.com">contact us</a> with any questions.
-      </p>
-    </form>
+      <div id="error-message" style="display: none; padding: 20px; color: #e67e22;">
+        <p id="error-text"></p>
+        <button onclick="location.reload()" style="margin-top: 10px; padding: 8px 16px;">Retry</button>
+      </div>
+    </div>
+
+    <p class="custom-color-help" style="text-align:center; margin-top: 30px;">
+      Questions? Feel free to
+      <a href="mailto:support@jgv3d.com">contact us</a>.
+    </p>
   </div>
 
   <script>
+    // Check if user is already logged in
+    async function checkSession() {
+      try {
+        const response = await fetch('/api/session', {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          // User is logged in, redirect to orders
+          window.location.href = 'orders.html';
+        } else {
+          // Show login UI
+          showLoginUI();
+        }
+      } catch (error) {
+        console.error('Session check error:', error);
+        showLoginUI();
+      }
+    }
+
+    function showLoginUI() {
+      document.getElementById('loading-message').style.display = 'none';
+      document.getElementById('login-container').style.display = 'block';
+      // Render Google Sign-In button
+      if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+        google.accounts.id.renderButton(
+          document.querySelector('.g_id_signin'),
+          { theme: 'outline', size: 'large' }
+        );
+      }
+    }
+
+    function showError(message) {
+      document.getElementById('loading-message').style.display = 'none';
+      document.getElementById('login-container').style.display = 'none';
+      document.getElementById('error-message').style.display = 'block';
+      document.getElementById('error-text').textContent = message;
+    }
+
+    async function handleCredentialResponse(response) {
+      document.getElementById('login-container').style.display = 'none';
+      document.getElementById('loading-message').style.display = 'block';
+
+      try {
+        const result = await fetch('/api/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ credential: response.credential })
+        });
+
+        if (result.ok) {
+          // Successfully logged in, redirect to orders
+          window.location.href = 'orders.html';
+        } else {
+          const error = await result.json();
+          showError(error.message || 'Login failed. Please try again.');
+        }
+      } catch (error) {
+        console.error('Login error:', error);
+        showError('Network error. Please check your connection and try again.');
+      }
+    }
+
     function updateMiniCart() {
       try {
         const cart = JSON.parse(localStorage.getItem('jgv3d_cart')) || [];
@@ -60,7 +129,11 @@
         }
       } catch (e) {}
     }
+
+    // Initialize
     updateMiniCart();
+    document.getElementById('loading-message').style.display = 'block';
+    checkSession();
   </script>
 </body>
 </html>
