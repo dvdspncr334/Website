@@ -5,8 +5,7 @@
   <link rel="icon" type="image/x-icon" href="images/favicon.ico">
   <title>Login | JGV3D Guitar Bodies</title>
   <link rel="stylesheet" href="style.css">
-  <script id="google-identity" src="https://accounts.google.com/gsi/client" async defer></script>
-  <script type="module" src="auth-client.js"></script>
+  <script type="module" src="auth-firebase.js"></script>
 </head>
 <body>
   <header class="header">
@@ -29,18 +28,36 @@
   <div class="about-container">
     <h2>Account Login</h2>
     <p>
-      Sign in securely with your Google account. Your cart stays in this browser.
+      Sign in with your email and password or Google account. Your cart stays in this browser.
     </p>
 
     <div style="max-width:360px; margin:20px auto; text-align:center;">
       <p id="auth-status" role="status" aria-live="polite">Loading sign-in…</p>
-      <div id="google-signin"></div>
+      <div id="sign-in-options">
+        <form id="email-signin">
+          <fieldset id="auth-fields" disabled style="border:0; padding:0;">
+            <p>
+              <label for="auth-email">Email</label><br>
+              <input id="auth-email" type="email" autocomplete="email" required>
+            </p>
+            <p>
+              <label for="auth-password">Password</label><br>
+              <input id="auth-password" type="password" autocomplete="current-password" required>
+            </p>
+            <button type="submit" class="add-btn">Sign in</button>
+            <button type="submit" id="create-account" class="add-btn">Create account</button>
+            <p><button type="button" id="reset-password">Forgot password?</button></p>
+            <p>or</p>
+            <button type="button" id="google-signin" class="add-btn">Sign in with Google</button>
+          </fieldset>
+        </form>
+      </div>
       <div id="signed-in" hidden>
         <p id="auth-user"></p>
         <p><a href="orders.html">View My Orders</a></p>
         <button type="button" id="sign-out" class="add-btn">Sign out</button>
       </div>
-      <noscript>JavaScript is required to sign in with Google.</noscript>
+      <noscript>JavaScript is required to sign in.</noscript>
       <p class="custom-color-help" style="text-align:center;">
         Questions? Feel free to
         <a href="mailto:support@jgv3d.com">contact us</a>.
