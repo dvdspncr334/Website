@@ -154,6 +154,23 @@ test('missing, malformed, and oversized credentials fail without setting session
   assert.equal((await app.post('/auth/login', { credential: 'x'.repeat(17000) })).status, 413);
 });
 
+test('login attempts are rate limited before Google verification', async t => {
+  let verifications = 0;
+  const app = await fixture(t, {
+    verifyIdToken: async () => {
+      verifications++;
+      throw new Error('invalid');
+    }
+  });
+  for (let attempt = 0; attempt < 20; attempt++) {
+    assert.equal((await app.post('/auth/login', { credential: 'invalid-token' })).status, 401);
+  }
+  const response = await app.post('/auth/login', { credential: 'invalid-token' });
+  assert.equal(response.status, 429);
+  assert.equal(verifications, 20);
+  assert.equal(response.headers.get('set-cookie'), null);
+});
+
 test('invalid, expired, and wrong-audience Google tokens are rejected', async t => {
   const app = await fixture(t, {
     verifyIdToken: async () => { throw new Error('verification failed'); }

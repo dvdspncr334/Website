@@ -3,6 +3,7 @@ const session = require('express-session');
 const { OAuth2Client } = require('google-auth-library');
 const { RedisStore } = require('connect-redis');
 const { createClient } = require('redis');
+const { rateLimit } = require('express-rate-limit');
 const { readdirSync } = require('node:fs');
 const path = require('node:path');
 
@@ -61,6 +62,13 @@ function createApp(config, { store, verifyIdToken } = {}) {
     res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
     next();
   });
+  app.use(rateLimit({
+    windowMs: 5 * 60 * 1000,
+    limit: 1000,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Please try again later.' }
+  }));
   app.use('/auth', (req, res, next) => {
     res.set('Cache-Control', 'no-store');
     if (req.method === 'POST' &&
@@ -83,7 +91,13 @@ function createApp(config, { store, verifyIdToken } = {}) {
   app.get('/auth/session', (req, res) => {
     res.json({ user: req.session.user || null });
   });
-  app.post('/auth/login', async (req, res, next) => {
+  app.post('/auth/login', rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 20,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: 'Too many sign-in attempts. Please try again later.' }
+  }), async (req, res, next) => {
     const credential = req.body?.credential;
     if (typeof credential !== 'string' || !credential || credential.length > 12000) {
       return res.status(400).json({ error: 'A Google ID token is required.' });

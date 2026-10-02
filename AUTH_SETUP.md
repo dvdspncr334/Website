@@ -90,7 +90,10 @@ credentials/CORS configuration is required or enabled.
 5. Point DNS at the new hosting service (or configure same-origin proxy routing),
    update Google's Authorized JavaScript origins, and redirect HTTP to HTTPS.
    The existing `CNAME` file is not Node hosting configuration.
-6. Apply edge/proxy rate limits to `/auth/login` and request-size/time limits.
+6. The backend limits each IP to 20 login attempts per 15 minutes and 1,000
+   general requests per five minutes, returning 429 when exceeded. These counters
+   are per process; also apply shared edge/proxy rate limits to `/auth/login`
+   and request-size/time limits, especially with multiple instances.
    Keep Redis private, enforce TLS where appropriate, restrict access to session
    data, and monitor availability without logging credentials, tokens, cookies,
    Redis URLs or user profiles. Keep Node and dependencies patched.
