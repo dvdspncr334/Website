@@ -5,7 +5,151 @@
   <link rel="icon" type="image/x-icon" href="images/favicon.ico">
   <title>Login | JGV3D Guitar Bodies</title>
   <link rel="stylesheet" href="style.css">
-  <script type="module" src="auth-firebase.js"></script>
+  <style>
+    .auth-container {
+      max-width: 400px;
+      margin: 20px auto;
+      padding: 20px;
+      text-align: center;
+    }
+    .tab-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .tab-button {
+      padding: 10px 20px;
+      border: 2px solid #e67e22;
+      background: white;
+      color: #333;
+      cursor: pointer;
+      font-size: 14px;
+      border-radius: 4px;
+      transition: all 0.3s;
+    }
+    .tab-button.active {
+      background: #e67e22;
+      color: white;
+    }
+    .tab-button:hover {
+      background: #f39c12;
+      color: white;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .form-group {
+      margin-bottom: 15px;
+      text-align: left;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #333;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: #e67e22;
+      box-shadow: 0 0 4px rgba(230, 126, 34, 0.3);
+    }
+    .btn {
+      width: 100%;
+      padding: 10px;
+      background: #e67e22;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .btn:hover {
+      background: #d35400;
+    }
+    .btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .google-signin-btn {
+      background: white;
+      color: #333;
+      border: 1px solid #ddd;
+      padding: 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.3s;
+    }
+    .google-signin-btn:hover {
+      background: #f5f5f5;
+      border-color: #e67e22;
+    }
+    .error-message {
+      color: #e74c3c;
+      background: #fadbd8;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      display: none;
+    }
+    .success-message {
+      color: #27ae60;
+      background: #d5f4e6;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      display: none;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+    }
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #e67e22;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .signed-in {
+      display: none;
+      text-align: center;
+    }
+    .user-info {
+      background: #ecf0f1;
+      padding: 15px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+    }
+    .user-email {
+      font-size: 16px;
+      color: #333;
+      margin-bottom: 10px;
+    }
+  </style>
 </head>
 <body>
   <header class="header">
@@ -27,45 +171,219 @@
 
   <div class="about-container">
     <h2>Account Login</h2>
-    <p>
-      Sign in with your email and password or Google account. Your cart stays in this browser.
-    </p>
+    <p>Sign in to your account or create a new one.</p>
 
-    <div style="max-width:360px; margin:20px auto; text-align:center;">
-      <p id="auth-status" role="status" aria-live="polite">Loading sign-in…</p>
-      <div id="sign-in-options">
-        <form id="email-signin">
-          <fieldset id="auth-fields" disabled style="border:0; padding:0;">
-            <p>
-              <label for="auth-email">Email</label><br>
-              <input id="auth-email" type="email" autocomplete="email" required>
-            </p>
-            <p>
-              <label for="auth-password">Password</label><br>
-              <input id="auth-password" type="password" autocomplete="current-password" required>
-            </p>
-            <button type="submit" class="add-btn">Sign in</button>
-            <button type="submit" id="create-account" class="add-btn">Create account</button>
-            <p><button type="button" id="reset-password">Forgot password?</button></p>
-            <p>or</p>
-            <button type="button" id="google-signin" class="add-btn">Sign in with Google</button>
-          </fieldset>
-        </form>
+    <div class="auth-container">
+      <div class="error-message" id="error"></div>
+      <div class="success-message" id="success"></div>
+
+      <div class="loading" id="loading">
+        <p>Loading...</p>
+        <div class="spinner"></div>
       </div>
-      <div id="signed-in" hidden>
-        <p id="auth-user"></p>
-        <p><a href="orders.html">View My Orders</a></p>
-        <button type="button" id="sign-out" class="add-btn">Sign out</button>
+
+      <div id="auth-form">
+        <div class="tab-buttons">
+          <button class="tab-button active" onclick="switchTab('signin')">Sign In</button>
+          <button class="tab-button" onclick="switchTab('signup')">Create Account</button>
+          <button class="tab-button" onclick="switchTab('google')">Google Sign-In</button>
+        </div>
+
+        <!-- Sign In Tab -->
+        <div id="signin" class="tab-content active">
+          <form onsubmit="handleSignIn(event)">
+            <div class="form-group">
+              <label for="signin-email">Email</label>
+              <input type="email" id="signin-email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+              <label for="signin-password">Password</label>
+              <input type="password" id="signin-password" required placeholder="••••••••">
+            </div>
+            <button type="submit" class="btn">Sign In</button>
+          </form>
+        </div>
+
+        <!-- Create Account Tab -->
+        <div id="signup" class="tab-content">
+          <form onsubmit="handleSignUp(event)">
+            <div class="form-group">
+              <label for="signup-email">Email</label>
+              <input type="email" id="signup-email" required placeholder="you@example.com">
+            </div>
+            <div class="form-group">
+              <label for="signup-password">Password</label>
+              <input type="password" id="signup-password" required placeholder="••••••••" minlength="6">
+            </div>
+            <div class="form-group">
+              <label for="signup-password-confirm">Confirm Password</label>
+              <input type="password" id="signup-password-confirm" required placeholder="••••••••" minlength="6">
+            </div>
+            <button type="submit" class="btn">Create Account</button>
+          </form>
+        </div>
+
+        <!-- Google Sign-In Tab -->
+        <div id="google" class="tab-content">
+          <button class="google-signin-btn" onclick="handleGoogleSignIn()">
+            <span>🔒 Sign in with Google</span>
+          </button>
+        </div>
       </div>
-      <noscript>JavaScript is required to sign in.</noscript>
-      <p class="custom-color-help" style="text-align:center;">
-        Questions? Feel free to
-        <a href="mailto:support@jgv3d.com">contact us</a>.
-      </p>
+
+      <!-- Signed In View -->
+      <div class="signed-in" id="signed-in-view">
+        <div class="user-info">
+          <div class="user-email" id="user-email"></div>
+          <p>You're signed in!</p>
+        </div>
+        <button class="btn" onclick="handleSignOut()">Sign Out</button>
+        <p style="margin-top: 15px;">
+          <a href="orders.html" style="color: #e67e22;">Go to My Orders →</a>
+        </p>
+      </div>
     </div>
+
+    <p class="custom-color-help" style="text-align:center; margin-top: 30px;">
+      Questions? Feel free to
+      <a href="mailto:support@jgv3d.com">contact us</a>.
+    </p>
   </div>
 
-  <script>
+  <script type="module">
+    import { getSession, signInWithGoogle, signInWithEmail, createAccountWithEmail, signOut } from './auth-firebase.js';
+
+    function switchTab(tab) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+
+      // Show selected tab
+      document.getElementById(tab).classList.add('active');
+      event.target.classList.add('active');
+
+      // Clear messages
+      clearMessages();
+    }
+
+    function showError(message) {
+      const errorEl = document.getElementById('error');
+      errorEl.textContent = message;
+      errorEl.style.display = 'block';
+      document.getElementById('success').style.display = 'none';
+    }
+
+    function showSuccess(message) {
+      const successEl = document.getElementById('success');
+      successEl.textContent = message;
+      successEl.style.display = 'block';
+      document.getElementById('error').style.display = 'none';
+    }
+
+    function clearMessages() {
+      document.getElementById('error').style.display = 'none';
+      document.getElementById('success').style.display = 'none';
+    }
+
+    function setLoading(isLoading) {
+      document.getElementById('loading').style.display = isLoading ? 'block' : 'none';
+      document.getElementById('auth-form').style.display = isLoading ? 'none' : 'block';
+    }
+
+    async function handleSignIn(e) {
+      e.preventDefault();
+      const email = document.getElementById('signin-email').value;
+      const password = document.getElementById('signin-password').value;
+
+      setLoading(true);
+      try {
+        await signInWithEmail(email, password);
+        showSuccess('Signed in successfully!');
+        setTimeout(() => showUserSession(), 1500);
+      } catch (error) {
+        showError(error.message || 'Sign-in failed. Please check your email and password.');
+        setLoading(false);
+      }
+    }
+
+    async function handleSignUp(e) {
+      e.preventDefault();
+      const email = document.getElementById('signup-email').value;
+      const password = document.getElementById('signup-password').value;
+      const passwordConfirm = document.getElementById('signup-password-confirm').value;
+
+      if (password !== passwordConfirm) {
+        showError('Passwords do not match.');
+        return;
+      }
+
+      setLoading(true);
+      try {
+        await createAccountWithEmail(email, password);
+        showSuccess('Account created successfully!');
+        setTimeout(() => showUserSession(), 1500);
+      } catch (error) {
+        showError(error.message || 'Failed to create account.');
+        setLoading(false);
+      }
+    }
+
+    async function handleGoogleSignIn() {
+      setLoading(true);
+      try {
+        await signInWithGoogle();
+        showSuccess('Signed in with Google!');
+        setTimeout(() => showUserSession(), 1500);
+      } catch (error) {
+        showError(error.message || 'Google sign-in failed.');
+        setLoading(false);
+      }
+    }
+
+    async function handleSignOut() {
+      setLoading(true);
+      try {
+        await signOut();
+        showSuccess('Signed out successfully.');
+        setTimeout(() => checkUserSession(), 1500);
+      } catch (error) {
+        showError(error.message || 'Sign-out failed.');
+        setLoading(false);
+      }
+    }
+
+    function showUserSession() {
+      document.getElementById('auth-form').style.display = 'none';
+      document.getElementById('signed-in-view').style.display = 'block';
+      setLoading(false);
+    }
+
+    function showAuthForm() {
+      document.getElementById('auth-form').style.display = 'block';
+      document.getElementById('signed-in-view').style.display = 'none';
+      setLoading(false);
+      clearMessages();
+    }
+
+    async function checkUserSession() {
+      try {
+        const user = await getSession();
+        if (user) {
+          document.getElementById('user-email').textContent = user.email;
+          showUserSession();
+        } else {
+          showAuthForm();
+        }
+      } catch (error) {
+        console.error('Error checking session:', error);
+        showAuthForm();
+      }
+    }
+
+    // Check session on page load
+    checkUserSession();
+
+    // Update mini cart
     function updateMiniCart() {
       try {
         const cart = JSON.parse(localStorage.getItem('jgv3d_cart')) || [];
@@ -78,6 +396,13 @@
       } catch (e) {}
     }
     updateMiniCart();
+
+    // Export to global scope for HTML onclick handlers
+    window.switchTab = switchTab;
+    window.handleSignIn = handleSignIn;
+    window.handleSignUp = handleSignUp;
+    window.handleGoogleSignIn = handleGoogleSignIn;
+    window.handleSignOut = handleSignOut;
   </script>
 </body>
 </html>
