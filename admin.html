@@ -61,9 +61,11 @@
           <p class="admin-note">Changes here are kept in this page only until you <strong>download</strong> the CSV or <strong>commit</strong> it to GitHub below. The live shop updates after GitHub Pages redeploys (usually a minute or two).</p>
           <div class="admin-toolbar">
             <input type="search" id="product-search" class="admin-input" placeholder="Filter by id, title or category" aria-label="Filter products">
-            <button type="button" class="admin-btn" id="add-product-btn" disabled>Add product</button>
+            <button type="button" class="admin-btn" id="create-product-btn" disabled>Create product with photos</button>
+            <button type="button" class="admin-btn admin-btn-outline" id="add-product-btn" disabled>Add product (raw fields)</button>
             <button type="button" class="admin-btn admin-btn-outline" id="reload-csv-btn">Reload from site</button>
             <button type="button" class="admin-btn admin-btn-outline" id="download-csv-btn" disabled>Download CSV</button>
+            <button type="button" class="admin-btn admin-btn-outline" id="export-photos-btn" disabled>Export CSV + photos</button>
           </div>
           <div class="admin-toolbar" id="bulk-toolbar" aria-label="Selected product actions" hidden>
             <span id="selection-count" role="status">0 selected</span>
@@ -83,6 +85,18 @@
           </div>
         </div>
 
+        <div id="product-creator" class="admin-card" hidden></div>
+        <div id="photo-export" class="admin-card" hidden>
+          <h2>Export files — not publication</h2>
+          <p class="admin-note">Download each file below, including the instructions. Upload images at the exact displayed repository paths and replace data/shop.csv in the same commit. These images are not yet deployed.</p>
+          <div id="photo-export-files"></div>
+        </div>
+        <div class="admin-card" id="staged-photo-card" hidden>
+          <h2>Staged photos</h2>
+          <p class="admin-note">Local previews are not uploads. Save to GitHub below to publish all referenced photos and the CSV together. After a failure, submit again to retry.</p>
+          <div id="staged-photo-list" role="status" aria-live="polite"></div>
+        </div>
+
         <form id="product-form" class="admin-card" hidden novalidate>
           <h2 id="product-form-title">Edit product</h2>
           <div class="admin-form-grid" id="product-fields"></div>
@@ -95,7 +109,7 @@
 
         <div class="admin-card">
           <h2>Save to GitHub (optional)</h2>
-          <p class="admin-note">Commits the edited CSV to <code>data/shop.csv</code> with the GitHub API. Needs a fine-grained personal access token limited to this repository with <em>Contents: Read and write</em>. The token is only kept in this page's memory, is sent only to <code>api.github.com</code>, and is cleared after a successful commit. If you'd rather not use a token, click <strong>Download CSV</strong> and upload/commit the file yourself.</p>
+          <p class="admin-note">Commits the edited CSV and referenced staged photos together with the GitHub API. Needs your explicitly supplied fine-grained personal access token limited to this repository with <em>Contents: Read and write</em>. Firebase admin access does not grant GitHub permission. Enter the token only here, never in chat. It is only kept in this page's memory, sent only to <code>api.github.com</code>, and cleared after a successful commit, signout or account change. Without a token, use <strong>Export CSV + photos</strong> and upload the files yourself. Product images are public site assets.</p>
           <form id="github-form" class="admin-form-grid" novalidate>
             <label class="admin-field">Owner<input class="admin-input" id="gh-owner" value="dvdspncr334" autocomplete="off" required></label>
             <label class="admin-field">Repository<input class="admin-input" id="gh-repo" value="Website" autocomplete="off" required></label>
@@ -103,7 +117,8 @@
             <label class="admin-field">Commit message<input class="admin-input" id="gh-message" value="Update shop products from admin dashboard" maxlength="200" required></label>
             <label class="admin-field admin-field-wide">Personal access token<input class="admin-input" id="gh-token" type="password" autocomplete="off" spellcheck="false" required></label>
             <div class="admin-field-wide admin-toolbar">
-              <button type="submit" class="admin-btn" id="gh-commit-btn">Commit data/shop.csv</button>
+              <button type="submit" class="admin-btn" id="gh-commit-btn">Commit CSV + staged photos</button>
+              <button type="button" class="admin-btn admin-btn-outline" id="gh-cancel-btn" disabled>Cancel pending publish</button>
             </div>
           </form>
           <p id="gh-status" class="admin-status" role="status"></p>
@@ -257,11 +272,14 @@
       parseShopCSV, serializeShopCSV, validateProduct, validateAll, normalizeProduct, applyBulkUpdate
     } from './shop-csv.js';
     import { activityTime, activityStats, filterActivity, exportTableCSV, backupData, backupFilename, createSessionAudit } from './admin-tools.js';
+    import { createProductCreator } from './product-creator.js';
+    import { publishShop } from './github-publish.js';
 
     const $ = id => document.getElementById(id);
     const EMAIL_RE = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
     let fb = null;
     let currentUid = null;
+    let authEpoch = 0;
     const loaded = {};
     let auditStorage = null;
     try { auditStorage = window.sessionStorage; } catch (e) { /* storage can be blocked */ }
@@ -361,6 +379,10 @@
     function setStatus(el, text, type = '') {
       el.textContent = text || '';
       el.className = `admin-status${type ? ` is-${type}` : ''}`;
+      if (type === 'error' && el.id === 'gh-status') {
+        el.tabIndex = -1;
+        el.focus();
+      }
     }
 
     function cell(text) {
@@ -416,7 +438,10 @@
     }
 
     async function gate(user) {
+      if (currentUid && user?.id === currentUid) return;
+      const epoch = ++authEpoch;
       if (!user) {
+        clearTransientProducts();
         clearAdminCache();
         location.replace('login.html');
         return;
@@ -424,7 +449,11 @@
       if (currentUid) {
         // Same user re-emitted (e.g. token refresh): keep the dashboard as is.
         // A different account signed in from another tab: start over cleanly.
-        if (currentUid !== user.id) location.reload();
+        if (currentUid !== user.id) {
+          clearTransientProducts();
+          showGate('Account changed. Reloading…');
+          location.reload();
+        }
         return;
       }
       showGate('Checking admin access…');
@@ -433,7 +462,9 @@
         allowed = await isAdmin();
         // Never deny from a cached answer: the user may have just been added.
         if (!allowed) allowed = await isAdmin({ force: true });
+        if (epoch !== authEpoch) return;
       } catch (error) {
+        if (epoch !== authEpoch) return;
         showGate(`Couldn't check admin access. ${friendlyFirestoreError(error)}`, { retry: true, login: true });
         return;
       }
@@ -455,13 +486,16 @@
     });
 
     $('logout-btn').addEventListener('click', async () => {
-      if (dirty && !confirm('You have unsaved product changes. Log out anyway?')) return;
-      dirty = false;
+      if (hasProductDrafts() && !confirm('You have unsaved product changes/photos. Discard them and log out?')) return;
+      ++authEpoch;
+      clearTransientProducts();
+      showGate('Signing out…');
       clearAdminCache();
       try {
         await fb.signOut();
       } catch (e) {
         alert('Sign out failed. Please try again.');
+        location.reload();
       }
     });
 
@@ -510,7 +544,101 @@
     let baseSha = null; // git blob SHA of the CSV the edits are based on
     let csvLoaded = false;
     let csvPromise = null;
+    let malformedLines = [];
+    let baselineRows = [];
+    let stagedPhotos = [];
+    let creator = null;
+    let publishing = false;
+    let publishController = null;
+    let exportUrls = [];
     const selectedProducts = new Set();
+
+    function hasProductDrafts() {
+      return dirty || Boolean(creator?.hasDraft()) || stagedPhotos.length > 0 || !$('product-form').hidden;
+    }
+
+    function clearExport() {
+      exportUrls.forEach(url => URL.revokeObjectURL(url));
+      exportUrls = [];
+      $('photo-export-files').textContent = '';
+      $('photo-export').hidden = true;
+    }
+
+    function clearTransientProducts() {
+      publishController?.abort();
+      creator?.clear();
+      stagedPhotos.forEach(photo => URL.revokeObjectURL(photo.previewUrl));
+      stagedPhotos = [];
+      clearExport();
+      rows = [];
+      baselineRows = [];
+      baseSha = null;
+      malformedLines = [];
+      currentUid = null;
+      dirty = false;
+      csvLoaded = false;
+      publishing = false;
+      $('gh-token').value = '';
+      $('product-creator').hidden = true;
+      $('product-fields').textContent = '';
+      $('product-form').hidden = true;
+      $('product-rows').textContent = '';
+      $('staged-photo-list').textContent = '';
+      $('staged-photo-card').hidden = true;
+      audit.clear();
+    }
+
+    function referencedPhotos() {
+      const paths = new Set();
+      for (const row of rows) {
+        paths.add(row.img);
+        for (const pair of (row.color_images || '').split('|')) {
+          const colon = pair.indexOf(':');
+          if (colon > 0) paths.add(pair.slice(colon + 1).trim());
+        }
+      }
+      return stagedPhotos.filter(photo => paths.has(photo.path));
+    }
+
+    function renderStagedPhotos() {
+      const list = $('staged-photo-list');
+      list.textContent = '';
+      const referenced = new Set(referencedPhotos());
+      for (const photo of stagedPhotos) {
+        const line = document.createElement('p');
+        line.textContent = `${photo.path} · ${(photo.blob.size / 1024).toFixed(0)} KB · ${photo.state || 'pending'}${referenced.has(photo) ? '' : ' (not referenced; excluded from publish/export)'}`;
+        list.append(line);
+      }
+      $('staged-photo-card').hidden = !stagedPhotos.length;
+    }
+
+    function openCreator(template = null) {
+      if (!currentUid || !csvLoaded || csvPromise || publishing) return;
+      if (!creator) creator = createProductCreator({
+        container: $('product-creator'),
+        getRows: () => rows,
+        getHeaders: () => headers,
+        isAllowed: () => Boolean(currentUid && csvLoaded && !csvPromise && !publishing),
+        onChange: () => clearExport(),
+        onSave(product, photos) {
+          if (!currentUid || publishing) throw new Error('Admin access changed. The draft cannot be saved.');
+          const combined = [...stagedPhotos, ...photos];
+          const csvBytes = new TextEncoder().encode(serializeShopCSV(headers, [...rows, product])).length;
+          if (combined.length > 20 || csvBytes + combined.reduce((total, photo) => total + photo.blob.size, 0) > 40 * 1024 * 1024) {
+            throw new Error('This session would exceed 20 staged photos or 40 MB total. Publish the current list first, or export/commit its files and reload after deployment, then start a new batch.');
+          }
+          rows.push(product);
+          stagedPhotos.push(...photos);
+          renderProducts();
+          renderStagedPhotos();
+          setDirty(true);
+          recordAudit('Product created', `ID: ${product.id}`, 1);
+        }
+      });
+      if (!$('product-form').hidden && !confirm('Discard the open raw product form?')) return;
+      closeForm();
+      creator.open(template);
+    }
 
     function updateStats() {
       $('stat-products').textContent = csvLoaded ? String(rows.length) : '—';
@@ -565,12 +693,14 @@
 
     function setDirty(value) {
       dirty = value;
+      clearExport();
+      renderStagedPhotos();
       if (dirty) setStatus($('shop-status'), `${rows.length} products · unsaved changes (download or commit to keep them).`, 'warning');
       updateStats();
     }
 
     window.addEventListener('beforeunload', event => {
-      if (dirty) { event.preventDefault(); event.returnValue = ''; }
+      if (hasProductDrafts()) { event.preventDefault(); event.returnValue = ''; }
     });
 
     function loadCSV() {
@@ -579,13 +709,17 @@
         csvPromise = null;
         $('add-product-btn').disabled = !csvLoaded;
         $('download-csv-btn').disabled = !csvLoaded;
+        $('create-product-btn').disabled = !csvLoaded;
+        $('export-photos-btn').disabled = !csvLoaded;
         updateSelection();
       });
       return csvPromise;
     }
 
     async function readCSV() {
-      if (dirty && !confirm('Discard your unsaved product changes and reload data/shop.csv?')) return;
+      if (!currentUid || publishing) return false;
+      if (hasProductDrafts() && !confirm('Discard your unsaved product changes/photos and reload data/shop.csv?')) return;
+      const epoch = authEpoch;
       $('shop-retry').hidden = true;
       $('add-product-btn').disabled = true;
       $('download-csv-btn').disabled = true;
@@ -598,20 +732,30 @@
         const response = await fetch('data/shop.csv', { cache: 'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const bytes = new Uint8Array(await response.arrayBuffer());
-        baseSha = await gitBlobSha(bytes);
+        const sha = await gitBlobSha(bytes);
+        if (epoch !== authEpoch || !currentUid) return false;
+        baseSha = sha;
         const parsed = parseShopCSV(new TextDecoder().decode(bytes));
+        creator?.clear();
+        stagedPhotos.forEach(photo => URL.revokeObjectURL(photo.previewUrl));
+        stagedPhotos = [];
+        clearExport();
         headers = parsed.headers;
         rows = parsed.rows;
+        baselineRows = rows.map(row => ({ ...row }));
+        malformedLines = parsed.skipped;
         csvLoaded = true;
         selectedProducts.clear();
         dirty = false;
         closeForm();
         renderProducts();
-        const skipped = parsed.skipped.length ? ` ${parsed.skipped.length} malformed line(s) skipped (lines ${parsed.skipped.join(', ')}); they will be dropped if you save.` : '';
+        renderStagedPhotos();
+        const skipped = parsed.skipped.length ? ` Malformed CSV at lines ${parsed.skipped.join(', ')}. Export/publish is blocked to avoid losing rows. Repair the original CSV in the repository, then reload.` : '';
         setStatus($('shop-status'), `Loaded ${rows.length} products.${skipped}`, skipped ? 'warning' : 'ok');
         updateStats();
         return true;
       } catch (e) {
+        if (epoch !== authEpoch || !currentUid) return false;
         renderProducts();
         setStatus($('shop-status'), 'Couldn\'t load data/shop.csv. Check your connection and try again.', 'error');
         $('shop-retry').hidden = false;
@@ -648,12 +792,17 @@
         edit.className = 'admin-btn admin-btn-small';
         edit.textContent = 'Edit';
         edit.addEventListener('click', () => openForm(index));
+        const duplicate = document.createElement('button');
+        duplicate.type = 'button';
+        duplicate.className = 'admin-btn admin-btn-small';
+        duplicate.textContent = 'Duplicate template';
+        duplicate.addEventListener('click', () => openCreator(row));
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'admin-btn admin-btn-small admin-btn-danger';
         remove.textContent = 'Delete';
         remove.addEventListener('click', () => deleteProduct(index));
-        actions.append(edit, remove);
+        actions.append(edit, duplicate, remove);
         tr.append(actions);
         body.append(tr);
       });
@@ -798,6 +947,10 @@
     }
 
     function openForm(index) {
+      if (!currentUid || publishing) return;
+      if (!$('product-form').hidden && !confirm('Discard changes in the open raw product form?')) return;
+      if (creator?.hasDraft() && !confirm('Discard the guided product draft?')) return;
+      creator?.clear();
       editingIndex = index;
       buildFields();
       const product = index >= 0 ? rows[index] : normalizeProduct({}, headers);
@@ -826,8 +979,7 @@
 
     $('product-form').addEventListener('submit', event => {
       event.preventDefault();
-      const product = {};
-      for (const name of headers) product[name] = $(`field-${name}`).value;
+      const product = Object.fromEntries(headers.map(name => [name, $(`field-${name}`).value]));
       const normalized = normalizeProduct(product, headers);
       const others = rows.filter((_, i) => i !== editingIndex);
       const errors = validateProduct(normalized, others);
@@ -852,7 +1004,10 @@
       setDirty(true);
     });
 
-    $('product-cancel').addEventListener('click', closeForm);
+    $('product-cancel').addEventListener('click', () => {
+      if (confirm('Discard changes in this form? Saved list edits will remain.')) closeForm();
+    });
+    $('create-product-btn').addEventListener('click', () => openCreator());
     $('add-product-btn').addEventListener('click', () => { if (csvLoaded && !csvPromise) openForm(-1); });
     $('reload-csv-btn').addEventListener('click', () => loadCSV());
     $('shop-retry').addEventListener('click', () => loadCSV());
@@ -873,8 +1028,17 @@
 
     // Returns the CSV text, or null (with a message) if any row is invalid.
     function exportCSV(statusEl) {
+      if (!currentUid || publishing) return null;
       if (!csvLoaded || csvPromise) {
         setStatus(statusEl, 'Load products successfully before exporting or committing.', 'error');
+        return null;
+      }
+      if (malformedLines.length) {
+        setStatus(statusEl, `Export/publish blocked: malformed CSV at lines ${malformedLines.join(', ')}. Repair the original repository file and reload; unseen rows must not be dropped.`, 'error');
+        return null;
+      }
+      if (creator?.hasDraft() || !$('product-form').hidden) {
+        setStatus(statusEl, 'Save the open product draft to the list, or explicitly discard it, before export/publish.', 'error');
         return null;
       }
       const problems = validateAll(rows);
@@ -889,31 +1053,73 @@
     $('download-csv-btn').addEventListener('click', () => {
       const csv = exportCSV($('shop-status'));
       if (csv === null) return;
+      if (referencedPhotos().length && !confirm('WARNING: staged photos are not deployed. This CSV alone will have missing images. Cancel and choose Export CSV + photos to download everything, or continue with CSV only?')) return;
       downloadFile(csv, 'shop.csv', 'text/csv;charset=utf-8');
       recordAudit('CSV export', 'shop.csv', rows.length);
-      setStatus($('shop-status'), 'Downloaded shop.csv. Replace data/shop.csv in the repository with it to publish.', 'ok');
+      setStatus($('shop-status'), referencedPhotos().length
+        ? 'Downloaded CSV only. Staged images are NOT deployed; use Export CSV + photos to keep their files and upload at the matching paths.'
+        : 'Downloaded shop.csv. Replace data/shop.csv in the repository with it to publish.', referencedPhotos().length ? 'warning' : 'ok');
+    });
+
+    $('export-photos-btn').addEventListener('click', () => {
+      const csv = exportCSV($('shop-status'));
+      if (csv === null) return;
+      clearExport();
+      const photos = referencedPhotos();
+      const instructions = [
+        'JGV3D product export — NOT published',
+        '',
+        'Download each file from the dashboard. Keep these instructions with the files.',
+        'In your repository, upload each image to the exact case-sensitive path listed below.',
+        'Create folders as needed. Do not flatten images into the repository root.',
+        'Replace data/shop.csv with the exported shop.csv.',
+        'Commit all images and the CSV together. Review any concurrent CSV changes first;',
+        'this manual export does not perform conflict checking or deploy verification.',
+        'Product images are public assets. The site changes only after GitHub Pages deployment.',
+        'No Firebase Storage setup is needed. No token is included in this export.',
+        '',
+        'Files:',
+        'data/shop.csv',
+        ...photos.map(photo => photo.path)
+      ].join('\n');
+      const files = [
+        { path: 'README.txt', blob: new Blob([instructions], { type: 'text/plain;charset=utf-8' }) },
+        { path: 'data/shop.csv', blob: new Blob([csv], { type: 'text/csv;charset=utf-8' }) },
+        ...photos
+      ];
+      for (const file of files) {
+        const link = document.createElement('a');
+        link.className = 'admin-btn admin-btn-outline';
+        link.href = URL.createObjectURL(file.blob);
+        exportUrls.push(link.href);
+        link.download = file.path.split('/').pop();
+        link.textContent = `Download ${file.path} (${(file.blob.size / 1024).toFixed(1)} KB)`;
+        const line = document.createElement('p');
+        line.append(link);
+        $('photo-export-files').append(line);
+      }
+      $('photo-export').hidden = false;
+      setStatus($('shop-status'), 'Export ready. Download every listed file and README.txt; nothing has been published.', 'warning');
     });
 
     /* ---------------- GitHub commit (optional) ---------------- */
-    function utf8ToBase64(text) {
-      const bytes = new TextEncoder().encode(text);
-      let binary = '';
-      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
-      return btoa(binary);
+    function productChangeSummary() {
+      const before = new Map(baselineRows.map(row => [row.id, row]));
+      const after = new Map(rows.map(row => [row.id, row]));
+      const changes = [];
+      for (const row of rows) {
+        if (!before.has(row.id)) changes.push(`Add ${row.id}`);
+        else if (JSON.stringify(row) !== JSON.stringify(before.get(row.id))) changes.push(`Update ${row.id}`);
+      }
+      for (const row of baselineRows) if (!after.has(row.id)) changes.push(`Delete ${row.id}`);
+      return changes.length ? changes.join('\n') : 'No product field changes';
     }
 
-    class GitHubError extends Error {}
-
-    function githubError(status) {
-      if (status === 401) return 'GitHub rejected the token (401). Check that it is valid and not expired.';
-      if (status === 403) return 'GitHub denied access (403). The token needs Contents: Read and write on this repository.';
-      if (status === 404) return 'Repository, branch or file not found (404), or the token can\'t see this repository.';
-      if (status === 409 || status === 422) return 'GitHub reported a conflict (the file changed or the branch is protected). Reload from site and try again.';
-      return `GitHub request failed (${status}). Please try again.`;
-    }
+    $('gh-cancel-btn').addEventListener('click', () => publishController?.abort());
 
     $('github-form').addEventListener('submit', async event => {
       event.preventDefault();
+      if (!currentUid || publishing) return;
       const status = $('gh-status');
       const owner = $('gh-owner').value.trim();
       const repo = $('gh-repo').value.trim();
@@ -935,41 +1141,65 @@
       }
       const csv = exportCSV(status);
       if (csv === null) return;
-      if (!confirm(`Commit data/shop.csv (${rows.length} products) to ${owner}/${repo} on branch "${branch}"?`)) return;
-
-      const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/data/shop.csv`;
-      const requestHeaders = {
-        Accept: 'application/vnd.github+json',
-        Authorization: 'Bearer ' + token,
-        'X-GitHub-Api-Version': '2022-11-28'
-      };
+      const photos = referencedPhotos();
+      if (!confirm(`Publish to ${owner}/${repo} on branch "${branch}"?\n\nProduct changes:\n${productChangeSummary()}\n\nFiles:\ndata/shop.csv\n${photos.map(photo => photo.path).join('\n')}\n\nImages are public. The site updates after GitHub Pages deployment, not instantly. No deployment verification is performed.`)) return;
+      const epoch = authEpoch;
+      const uid = currentUid;
+      publishing = true;
+      publishController = new AbortController();
+      const controls = [...document.querySelectorAll('#panel-shop button, #panel-shop input, #panel-shop select, #panel-shop textarea')];
+      const disabled = controls.map(control => control.disabled);
+      controls.forEach(control => { control.disabled = true; });
       $('gh-commit-btn').disabled = true;
-      setStatus(status, 'Committing to GitHub…');
+      $('gh-cancel-btn').disabled = false;
+      setStatus(status, 'Publishing CSV and photos together. Local previews are not uploads…');
       try {
-        const current = await fetch(`${url}?ref=${encodeURIComponent(branch)}`, { headers: requestHeaders, cache: 'no-store' });
-        if (!current.ok) throw new GitHubError(githubError(current.status));
-        const { sha } = await current.json();
-        if (sha !== baseSha) {
-          throw new GitHubError('data/shop.csv on GitHub is different from the copy you loaded (someone else changed it, or GitHub Pages hasn\'t redeployed yet). Download your CSV to keep your edits, then Reload from site and try again.');
+        const allowed = await isAdmin({ force: true });
+        if (epoch !== authEpoch || uid !== currentUid || publishController.signal.aborted) {
+          if (epoch === authEpoch && uid === currentUid) throw new Error('Publishing cancelled before any GitHub write.');
+          return;
         }
-        const response = await fetch(url, {
-          method: 'PUT',
-          headers: { ...requestHeaders, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, content: utf8ToBase64(csv), sha, branch })
+        if (!allowed) {
+          ++authEpoch;
+          clearTransientProducts();
+          showGate('Admin access was removed.');
+          location.replace('login.html?admin=denied');
+          return;
+        }
+        // The publisher only calls https://api.github.com/repos/ and rejects redirects.
+        const result = await publishShop({
+          owner, repo, branch, message, token, csv, baseSha, photos,
+          signal: publishController.signal,
+          isCurrent: () => epoch === authEpoch && uid === currentUid,
+          onPhotoState(path, state) {
+            if (epoch !== authEpoch || uid !== currentUid) return;
+            const photo = stagedPhotos.find(item => item.path === path);
+            if (photo) photo.state = state;
+            renderStagedPhotos();
+          }
         });
-        if (!response.ok) throw new GitHubError(githubError(response.status));
-        const result = await response.json().catch(() => null);
-        baseSha = result && result.content && result.content.sha ? result.content.sha : null;
+        if (epoch !== authEpoch || uid !== currentUid) return;
+        baseSha = result.csvSha;
+        baselineRows = rows.map(row => ({ ...row }));
         $('gh-token').value = '';
         dirty = false;
-        setStatus(status, 'Committed. GitHub Pages will redeploy the shop shortly.', 'ok');
+        stagedPhotos.forEach(photo => URL.revokeObjectURL(photo.previewUrl));
+        stagedPhotos = [];
+        renderStagedPhotos();
+        clearExport();
+        setStatus(status, 'Committed CSV and photos. The site updates after GitHub Pages deployment; deployment has not been verified.', 'ok');
         setStatus($('shop-status'), `${rows.length} products · committed to GitHub.`, 'ok');
       } catch (error) {
-        setStatus(status, error instanceof GitHubError
-          ? error.message
-          : 'Couldn\'t reach GitHub. Check your connection, or use Download CSV instead.', 'error');
+        if (epoch !== authEpoch || uid !== currentUid) return;
+        setStatus(status, `${error.message || 'Publish failed.'} Your list edits and photos are retained. Retry or export the files.`, 'error');
       } finally {
-        $('gh-commit-btn').disabled = false;
+        if (epoch === authEpoch && uid === currentUid) {
+          publishing = false;
+          publishController = null;
+          controls.forEach((control, index) => { control.disabled = disabled[index]; });
+          $('gh-commit-btn').disabled = false;
+          $('gh-cancel-btn').disabled = true;
+        }
       }
     });
 

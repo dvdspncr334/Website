@@ -114,7 +114,7 @@ const validProducts = () => [
   { id: 'gamma', title: 'Gamma', price: '30', img: 'images/c.png', status: 'in-stock' }
 ].map(product => shopTools.normalizeProduct(product));
 
-function fixture({ users = [], admins = [], failRead = false, failClear = false, failDelete = false, failDownload = false, denied = false, blockedStorage = false } = {}) {
+function fixture({ users = [], admins = [], failRead = false, failClear = false, failDelete = false, failDownload = false, denied = false, blockedStorage = false, csvText, publishImpl } = {}) {
   const elements = new Map();
   for (const match of admin.matchAll(/<([a-z][a-z0-9]*)\b([^>]*\bid="([^"]+)"[^>]*)>/g)) {
     const el = new Element(match[1]);
@@ -132,6 +132,10 @@ function fixture({ users = [], admins = [], failRead = false, failClear = false,
   get('activity-direction').value = 'desc';
   const reads = [], downloads = [], deletions = [], checks = [];
   const blobs = new Map();
+  const revoked = [];
+  let confirmChoice = true;
+  let creatorOptions;
+  let creatorDraft = false;
   const storage = new Map([['jgv3d_admin_audit', '[{"action":"previous refresh"}]'], ['jgv3d_orders', '[{"id":"demo"}]'], ['jgv3d_cart', 'keep']]);
   const sessionStorage = {
     getItem: key => storage.get(key),
@@ -176,17 +180,27 @@ function fixture({ users = [], admins = [], failRead = false, failClear = false,
     body: new Element('body')
   };
   const context = vm.createContext({
-    ...shopTools, ...adminTools, document, Blob, TextEncoder, TextDecoder, Uint8Array, crypto: webcrypto,
+    ...shopTools, ...adminTools, document, Blob, TextEncoder, TextDecoder, Uint8Array, AbortController, crypto: webcrypto,
+    publishShop: options => publishImpl(options),
+    createProductCreator: options => {
+      creatorOptions = options;
+      return {
+        open() { creatorDraft = true; },
+        clear() { creatorDraft = false; },
+        hasDraft: () => creatorDraft,
+        isBusy: () => false
+      };
+    },
     window: { sessionStorage, addEventListener() {} },
     localStorage: {
       getItem: key => storage.get(key),
       removeItem: key => { if (blockedStorage) throw new Error('blocked'); deletions.push(key); storage.delete(key); }
     },
-    URL: { createObjectURL: blob => { const key = `blob:${blobs.size}`; blobs.set(key, blob); return key; }, revokeObjectURL() {} },
-    setTimeout() {}, location: { replace() {}, reload() {} }, confirm: () => true, alert() {},
+    URL: { createObjectURL: blob => { const key = `blob:${blobs.size}`; blobs.set(key, blob); return key; }, revokeObjectURL: url => revoked.push(url) },
+    setTimeout() {}, location: { replace() {}, reload() {} }, confirm: () => confirmChoice, alert() {},
     fetch: async () => {
       csvFetches++;
-      const bytes = new TextEncoder().encode(shopTools.serializeShopCSV(shopTools.SHOP_COLUMNS, validProducts()));
+      const bytes = new TextEncoder().encode(csvText ?? shopTools.serializeShopCSV(shopTools.SHOP_COLUMNS, validProducts()));
       return { ok: true, arrayBuffer: async () => bytes.buffer };
     },
     isAdmin: async options => { checks.push(options); return !denied; },
@@ -212,11 +226,16 @@ function fixture({ users = [], admins = [], failRead = false, failClear = false,
     fb = { fs: globalThis.testFS, db: {} };
     currentUid = 'admin-current';
     globalThis.page = {
-      loadDashboard, loadActivity, renderActivity, renderProducts, ensureProducts, openForm, deleteProduct, removeActivity, removeAdmin, recordAudit,
-      state: () => ({ rows, selected: [...selectedProducts], dirty, audit: audit.entries(), users: activityUsers })
+      loadDashboard, loadActivity, renderActivity, renderProducts, ensureProducts, openForm, deleteProduct, removeActivity, removeAdmin, recordAudit, gate,
+      state: () => ({ rows, selected: [...selectedProducts], dirty, audit: audit.entries(), users: activityUsers, baseSha, stagedPhotos, publishing })
     };`, Object.assign(context, { testFS: fs }));
   return {
-    get, page: context.page, storage, downloads, reads, deletions, checks,
+    get, page: context.page, storage, downloads, reads, deletions, checks, revoked,
+    setConfirm: value => { confirmChoice = value; },
+    saveCreator: (product, photos) => {
+      creatorDraft = false;
+      creatorOptions.onSave(product, photos);
+    },
     csvFetches: () => csvFetches,
     setUsers: records => { currentUsers = records; },
     allowReads: () => { failActivity = false; },
@@ -234,6 +253,116 @@ async function confirmTwice(f) {
   await f.get('confirm-text').emit('input');
   await f.get('confirm-form').emit('submit');
 }
+
+async function stagePhotoProduct(f) {
+  await f.page.ensureProducts();
+  await f.get('create-product-btn').emit('click');
+  const path = 'images/products/new-product/photo-0123456789abcdef.png';
+  const photo = { path, blob: new Blob(['image'], { type: 'image/png' }), previewUrl: 'blob:staged', state: 'pending' };
+  f.saveCreator(shopTools.normalizeProduct({ id: 'new-product', title: 'New product', price: '42', img: path }), [photo]);
+  return photo;
+}
+
+function configurePublish(f) {
+  f.get('gh-token').value = 'x'.repeat(30);
+}
+
+test('malformed deployed CSV blocks both export and publication without silently losing rows', async () => {
+  const f = fixture({ csvText: `${shopTools.serializeShopCSV(shopTools.SHOP_COLUMNS, validProducts())}broken,row\n` });
+  await f.page.ensureProducts();
+  assert.match(f.get('shop-status').textContent, /blocked/);
+  await f.get('download-csv-btn').emit('click');
+  await f.get('export-photos-btn').emit('click');
+  configurePublish(f);
+  await f.get('github-form').emit('submit');
+  assert.equal(f.downloads.length, 0);
+  assert.match(f.get('gh-status').textContent, /malformed CSV/);
+  assert.equal(f.page.state().rows.length, 3);
+});
+
+test('photo export offers final paths and instructions, never claims publication or changes dirty state', async () => {
+  const f = fixture();
+  const photo = await stagePhotoProduct(f);
+  configurePublish(f);
+  await f.get('export-photos-btn').emit('click');
+  const links = f.get('photo-export-files').querySelectorAll('*').filter(el => el.tagName === 'A');
+  assert.equal(links.length, 3);
+  assert.match(links[2].textContent, new RegExp(photo.path));
+  for (const link of links) link.click();
+  const csvDownload = f.downloads.find(file => file.filename === 'shop.csv');
+  const readme = f.downloads.find(file => file.filename === 'README.txt');
+  assert.doesNotMatch(await csvDownload.blob.text(), /blob:|x{30}/);
+  assert.match(await readme.blob.text(), /NOT published/);
+  assert.match(await readme.blob.text(), /images\/products\/new-product/);
+  assert.equal(f.page.state().dirty, true);
+  f.setConfirm(false);
+  await f.get('download-csv-btn').emit('click');
+  assert.equal(f.downloads.length, 3);
+});
+
+test('publish failure and cancelled confirmation preserve staged photos, token, baseline and edits', async () => {
+  let calls = 0;
+  const f = fixture({ publishImpl: async () => { calls++; throw new Error('GitHub denied access (403).'); } });
+  const photo = await stagePhotoProduct(f);
+  const beforeSha = f.page.state().baseSha;
+  configurePublish(f);
+  f.setConfirm(false);
+  await f.get('github-form').emit('submit');
+  assert.equal(calls, 0);
+  f.setConfirm(true);
+  await f.get('github-form').emit('submit');
+  assert.equal(calls, 1);
+  assert.equal(f.page.state().baseSha, beforeSha);
+  assert.equal(f.page.state().stagedPhotos[0], photo);
+  assert.equal(f.page.state().dirty, true);
+  assert.ok(f.get('gh-token').value);
+  assert.match(f.get('gh-status').textContent, /retained/);
+  assert.equal(f.page.state().publishing, false);
+});
+
+test('only confirmed publish updates baseline and clears staged resources/token', async () => {
+  let received;
+  const f = fixture({ publishImpl: async options => {
+    received = options;
+    options.onPhotoState(options.photos[0].path, 'completed');
+    return { csvSha: 'confirmed-csv-sha', commitSha: 'confirmed-commit' };
+  } });
+  await stagePhotoProduct(f);
+  configurePublish(f);
+  await f.get('github-form').emit('submit');
+  assert.equal(received.photos.length, 1);
+  assert.doesNotMatch(received.csv, /blob:/);
+  assert.equal(f.page.state().baseSha, 'confirmed-csv-sha');
+  assert.equal(f.page.state().dirty, false);
+  assert.equal(f.page.state().stagedPhotos.length, 0);
+  assert.equal(f.get('gh-token').value, '');
+  assert.ok(f.revoked.includes('blob:staged'));
+  assert.match(f.get('gh-status').textContent, /deployment has not been verified/);
+});
+
+test('account change aborts publication, revokes previews, clears drafts/token, and ignores stale completion', async () => {
+  let finish, received;
+  const f = fixture({ publishImpl: options => {
+    received = options;
+    return new Promise(resolve => { finish = resolve; });
+  } });
+  await stagePhotoProduct(f);
+  configurePublish(f);
+  const pending = f.get('github-form').emit('submit');
+  assert.equal(f.page.state().publishing, true);
+  await f.get('github-form').emit('submit');
+  await f.page.gate({ id: 'different-account', email: 'another@example.test' });
+  assert.equal(received.signal.aborted, true);
+  assert.equal(received.isCurrent(), false);
+  received.onPhotoState(received.photos[0].path, 'completed');
+  finish({ csvSha: 'stale-result' });
+  await pending;
+  assert.notEqual(f.page.state().baseSha, 'stale-result');
+  assert.equal(f.page.state().rows.length, 0);
+  assert.equal(f.page.state().stagedPhotos.length, 0);
+  assert.equal(f.get('gh-token').value, '');
+  assert.ok(f.revoked.includes('blob:staged'));
+});
 
 test('dashboard loads CSV and every activity record, counts sign-ins rather than activity, and refreshes', async () => {
   const now = Date.now();
