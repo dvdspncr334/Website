@@ -167,3 +167,90 @@ test('Firestore errors propagate so pages can show retry messages', async () => 
   await assert.rejects(api.loadShipping('alice'), error => error === failure);
   await assert.rejects(api.saveShipping('alice', address()), error => error === failure);
 });
+
+test('Cancelled orders expose trimmed cancellation reasons without changing initial creation', () => {
+  assert.equal(normalizeOrder({ status: 'Cancelled', cancellationReason: ' No stock ' }).cancellationReason, 'No stock');
+  assert.equal(normalizeOrder({ status: 'Cancelled' }).status, 'Cancelled');
+  assert.equal(normalizeOrder({}).cancellationReason, '');
+  assert.equal(buildOrder({ items: [item('a')], shipping: address() }).status, 'In Queue');
+});
+
+test('same UID signout/login rejects old account read and transaction work', async () => {
+  for (const operation of ['read', 'place']) {
+    const { fs, docs } = fakeFirestore({ existing: { 'users/alice/profile/shipping': address() } });
+    const auth = { currentUser: { uid: 'alice' } };
+    let changed;
+    const onUserChanged = callback => { changed = callback; callback(auth.currentUser); return () => {}; };
+    let release;
+    const wait = new Promise(resolve => { release = resolve; });
+    if (operation === 'read') {
+      const original = fs.getDoc;
+      fs.getDoc = async ref => { await wait; return original(ref); };
+    } else {
+      fs.runTransaction = async (_, callback) => {
+        await callback({ get: async () => { await wait; return { exists: () => false }; },
+          set: (ref, data) => docs.set(ref, data) });
+      };
+    }
+    const api = createAccountData({ db: {}, fs, auth, onUserChanged });
+    const order = buildOrder({ items: [item('a')], shipping: address() });
+    const pending = operation === 'read' ? api.loadShipping('alice') : api.placeOrder('alice', order);
+    auth.currentUser = null; changed(null);
+    auth.currentUser = { uid: 'alice' }; changed(auth.currentUser);
+    release();
+    await assert.rejects(pending, { code: 'stale-user' });
+    assert.equal(docs.has(`users/alice/orders/${order.id}`), false);
+  }
+});
+
+test('buyer subscriptions show status updates/deletes and suppress stale callbacks after auth changes', () => {
+  const auth = { currentUser: { uid: 'alice' } };
+  let changed;
+  const callbacks = [];
+  let stops = 0;
+  const fs = {
+    doc: (_, ...parts) => parts.join('/'), collection: (_, ...parts) => parts.join('/'),
+    onSnapshot(ref, onNext, onError) { callbacks.push({ ref, onNext, onError }); return () => { stops++; }; }
+  };
+  const api = createAccountData({ db: {}, fs, auth,
+    onUserChanged: callback => { changed = callback; callback(auth.currentUser); return () => {}; } });
+  const lists = [];
+  const details = [];
+  const errors = [];
+  const offList = api.subscribeOrders('alice', value => lists.push(value), error => errors.push(error));
+  const offDetail = api.subscribeOrder('alice', 'JGV-00000001', value => details.push(value), error => errors.push(error));
+  const doc = { id: 'JGV-00000001', exists: () => true,
+    data: () => ({ status: 'Cancelled', cancellationReason: 'No stock' }) };
+  callbacks[0].onNext({ docs: [doc] }); callbacks[1].onNext(doc);
+  assert.equal(lists[0][0].status, 'Cancelled');
+  assert.equal(details[0].cancellationReason, 'No stock');
+  callbacks[0].onNext({ docs: [] }); callbacks[1].onNext({ exists: () => false });
+  assert.deepEqual(lists[1], []);
+  assert.equal(details[1], null);
+  auth.currentUser = null; changed(null);
+  auth.currentUser = { uid: 'alice' }; changed(auth.currentUser);
+  callbacks.forEach(callback => { callback.onNext(callback.ref.endsWith('orders') ? { docs: [doc] } : doc); callback.onError(new Error('stale')); });
+  assert.equal(lists.length, 2);
+  assert.equal(details.length, 2);
+  assert.equal(errors.length, 0);
+  assert.equal(stops, 2);
+  offList(); offDetail();
+  assert.throws(() => api.subscribeOrders('bob', () => {}), { code: 'stale-user' });
+  assert.throws(() => api.subscribeOrder('alice', '../x', () => {}), { code: 'invalid-order' });
+});
+
+test('unsubscribing/disposal suppresses already queued listener events and errors', () => {
+  const auth = { currentUser: { uid: 'alice' } };
+  let next;
+  let error;
+  let count = 0;
+  const fs = { collection: () => 'collection',
+    onSnapshot: (_, onNext, onError) => { next = onNext; error = onError; return () => {}; } };
+  const api = createAccountData({ db: {}, fs, auth });
+  const off = api.subscribeOrders('alice', () => count++, () => count++);
+  off(); next({ docs: [] }); error(new Error('ignored'));
+  assert.equal(count, 0);
+  api.subscribeOrders('alice', () => count++, () => count++);
+  api.dispose(); next({ docs: [] }); error(new Error('ignored'));
+  assert.equal(count, 0);
+});

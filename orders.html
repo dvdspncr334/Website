@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="images/favicon.ico">
   <title>Your Orders | JGV3D Guitar Bodies</title>
   <link rel="stylesheet" href="style.css">
@@ -41,7 +42,8 @@
       'In Queue': 'status-queued',
       'In Progress': 'status-in-progress',
       'Shipped': 'status-shipped',
-      'Completed': 'status-completed'
+      'Completed': 'status-completed',
+      'Cancelled': 'status-cancelled'
     };
 
     const list = document.getElementById('orders-list');
@@ -51,6 +53,7 @@
     let api = null;
     let currentUid = null;
     let epoch = 0;
+    let unsubscribeOrders = null;
 
     function formatPrice(num) {
       return `$${Number(num || 0).toFixed(2)}`;
@@ -173,6 +176,7 @@
           </div>
 
           ${shipTo ? `<p class="order-card-copy"><strong>Ship to:</strong> ${escapeHTML(shipTo)}</p>` : ''}
+          ${status === 'Cancelled' ? `<p class="order-card-copy">This order was cancelled.${order.cancellationReason ? ` Reason: ${escapeHTML(order.cancellationReason)}` : ''} Cancellation records status only; it does not process a refund.</p>` : ''}
 
           <div class="order-preview-list">
             ${previewItems}
@@ -192,6 +196,8 @@
     async function loadOrders() {
       const myEpoch = ++epoch;
       const uid = currentUid;
+      if (unsubscribeOrders) unsubscribeOrders();
+      unsubscribeOrders = null;
       list.innerHTML = '';
       if (!uid) {
         setStatus('');
@@ -200,10 +206,15 @@
       }
       setStatus('Loading your orders…');
       try {
-        const orders = await api.listOrders(uid);
-        if (myEpoch !== epoch) return;
-        setStatus('');
-        renderOrders(orders);
+        unsubscribeOrders = api.subscribeOrders(uid, orders => {
+          if (myEpoch !== epoch) return;
+          setStatus('');
+          renderOrders(orders);
+        }, error => {
+          if (myEpoch !== epoch) return;
+          list.innerHTML = '';
+          setStatus(`Couldn't load your orders. ${friendlyAccountError(error)}`, { error: true, retry: true });
+        });
       } catch (error) {
         if (myEpoch !== epoch) return;
         setStatus(`Couldn't load your orders. ${friendlyAccountError(error)}`, { error: true, retry: true });

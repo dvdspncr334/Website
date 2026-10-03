@@ -9,6 +9,7 @@ import { webcrypto } from 'node:crypto';
 import * as shopTools from '../shop-csv.js';
 import * as adminTools from '../admin-tools.js';
 import * as accountData from '../account-data.js';
+import { createAdminOrderUI } from '../admin-order-ui.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = name => readFileSync(path.join(root, name), 'utf8');
@@ -44,8 +45,11 @@ test('orders tab separates Firestore account orders from labelled browser-local 
   assert.match(admin, /<h2>Account orders \(Firestore\)<\/h2>/);
   assert.match(admin, /<h2>Local demo orders \(this browser only\)<\/h2>/);
   assert.match(admin, /Local demo orders are browser-local demo data/);
-  assert.match(admin, /fs\.collectionGroup\(db, 'orders'\)/);
-  assert.match(admin, /from '\.\/account-data\.js'/);
+  assert.match(admin, /from '\.\/admin-orders\.js'/);
+  assert.match(admin, /from '\.\/admin-order-ui\.js'/);
+  assert.match(admin, /Default scope: your signed-in admin account's own orders/);
+  assert.match(admin, /Select ALL accounts explicitly/);
+  assert.match(admin, /Client session log \(non-authoritative\)/);
 });
 
 test('activity tracking and admin helpers stay out of auth-firebase.js', () => {
@@ -119,7 +123,7 @@ const validProducts = () => [
   { id: 'gamma', title: 'Gamma', price: '30', img: 'images/c.png', status: 'in-stock' }
 ].map(product => shopTools.normalizeProduct(product));
 
-function fixture({ users = [], admins = [], orders = [], failOrders = false, failRead = false, failClear = false, failDelete = false, failDownload = false, denied = false, blockedStorage = false, csvText, publishImpl } = {}) {
+function fixture({ users = [], admins = [], orders = [], failOrders = false, failRead = false, failClear = false, failDelete = false, failDownload = false, denied = false, blockedStorage = false, csvText, publishImpl, orderLoader } = {}) {
   const elements = new Map();
   for (const match of admin.matchAll(/<([a-z][a-z0-9]*)\b([^>]*\bid="([^"]+)"[^>]*)>/g)) {
     const el = new Element(match[1]);
@@ -195,7 +199,18 @@ function fixture({ users = [], admins = [], orders = [], failOrders = false, fai
     body: new Element('body')
   };
   const context = vm.createContext({
-    ...shopTools, ...adminTools, ...accountData, document, Blob, TextEncoder, TextDecoder, Uint8Array, AbortController, crypto: webcrypto,
+    ...shopTools, ...adminTools, ...accountData, createAdminOrderUI, document, Blob, TextEncoder, TextDecoder, Uint8Array, AbortController, crypto: webcrypto,
+    loadAdminOrders: orderLoader || (async () => ({
+      listOrders: async () => {
+        reads.push('group:orders');
+        if (failOrders) throw Object.assign(new Error('denied'), { code: 'permission-denied' });
+        return orders.map(order => ({ ...accountData.normalizeOrder(order.data, order.id),
+          uid: order.uid, path: `users/${order.uid}/orders/${order.id}` }));
+      },
+      updateStatus: async () => {},
+      deleteOrders: async paths => ({ deletedPaths: paths }),
+      invalidate() {}, dispose() {}
+    })),
     publishShop: options => publishImpl(options),
     createProductCreator: options => {
       creatorOptions = options;
@@ -240,8 +255,9 @@ function fixture({ users = [], admins = [], orders = [], failOrders = false, fai
   vm.runInContext(`${script}
     fb = { fs: globalThis.testFS, db: {} };
     currentUid = 'admin-current';
+    orderUI.setAccount(currentUid);
     globalThis.page = {
-      loadDashboard, loadActivity, renderActivity, loadOrders, loadAccountOrders, renderProducts, ensureProducts, openForm, deleteProduct, removeActivity, removeAdmin, recordAudit, gate,
+      loadDashboard, loadActivity, renderActivity, loadOrders, loadAccountOrders, orderServiceFor, clearPendingOrderActions, renderProducts, ensureProducts, openForm, deleteProduct, removeActivity, removeAdmin, recordAudit, gate,
       state: () => ({ rows, selected: [...selectedProducts], dirty, audit: audit.entries(), users: activityUsers, baseSha, stagedPhotos, publishing })
     };`, Object.assign(context, { testFS: fs }));
   return {
@@ -759,7 +775,7 @@ test('audit export failures show an explicit error and leave the session log int
   }
 });
 
-test('orders tab lists every account order read-only, newest first, with customer and shipping summary', async () => {
+test('orders tab lists all-account full paths newest first and opens private accessible details', async () => {
   const shipping = { firstName: 'Ada', lastName: 'L', streetAddress1: '1 Main', city: 'Austin', state: 'TX', postalCode: '78701', country: 'US', phone: '555', deliveryNotes: '<b>side door</b>' };
   const f = fixture({
     users: [{ uid: 'bob', email: 'bob@example.com' }],
@@ -769,16 +785,22 @@ test('orders tab lists every account order read-only, newest first, with custome
     ]
   });
   await f.page.loadActivity();
-  f.page.loadOrders();
-  await f.page.loadAccountOrders();
+  f.get('order-scope').value = 'all';
+  await f.page.loadOrders();
   const rows = f.get('account-order-rows').children;
   assert.equal(rows.length, 2);
   const text = row => row.children.map(td => td.textContent);
-  assert.deepEqual(text(rows[0]).slice(0, 2), ['JGV-00000002', 'bob@example.com'], 'email falls back to userActivity');
-  assert.equal(text(rows[0])[3], 'Shipped');
-  assert.match(text(rows[0])[6], /Ada L — 1 Main — Austin, TX, 78701, US · Phone: 555 · Delivery notes: <b>side door<\/b> · Order notes: gift/);
-  assert.deepEqual(text(rows[1]).slice(0, 2), ['JGV-00000001', 'alice@example.com']);
-  assert.equal(text(rows[1])[5], '$20.00');
+  assert.match(text(rows[0])[1], /JGV-00000002.*users\/bob\/orders\/JGV-00000002/);
+  assert.equal(text(rows[0])[2], 'UID bob', 'missing email never guesses an unrelated customer email');
+  assert.equal(text(rows[0])[4], 'Shipped');
+  assert.match(text(rows[0])[7], /Ada L — 1 Main — Austin, TX, 78701, US/);
+  assert.equal(text(rows[1])[2], 'alice@example.com');
+  assert.equal(text(rows[1])[6], '$20.00');
+  await rows[0].children[8].children[0].emit('click');
+  assert.equal(f.get('order-details-dialog').open, true);
+  assert.match(f.get('order-details-body').textContent, /<b>side door<\/b>/);
+  assert.match(f.get('order-details-body').textContent, /Order notes: gift/);
+  assert.match(f.get('order-details-body').textContent, /Unit price.*Subtotal.*\$5\.00.*Order total: \$5\.00/);
   assert.match(f.get('account-orders-status').textContent, /2 account order/);
   assert.equal(f.get('order-rows').children.length, 1, 'local demo orders are still listed separately');
   assert.equal(f.get('orders-refresh').disabled, false);
@@ -787,8 +809,61 @@ test('orders tab lists every account order read-only, newest first, with custome
 test('account order load errors are shown with retry and never touch local demo orders', async () => {
   const f = fixture({ failOrders: true });
   await f.page.loadAccountOrders();
-  assert.match(f.get('account-orders-status').textContent, /Couldn't load account orders. Permission denied/);
+  assert.match(f.get('account-orders-status').textContent, /Couldn't load account orders.*Refresh to retry/);
   assert.match(f.get('account-orders-status').className, /is-error/);
   assert.equal(f.get('orders-refresh').disabled, false);
   assert.equal(f.storage.get('jgv3d_orders'), '[{"id":"demo"}]');
+});
+
+test('account change cancels the isolated demo reset confirmation without deleting anything', async () => {
+  const f = fixture();
+  const pending = f.get('reset-orders').emit('click');
+  assert.equal(f.get('confirm-dialog').open, true);
+  await f.page.gate({ id: 'other-admin', email: 'other@example.test' });
+  await pending;
+  assert.equal(f.get('confirm-dialog').open, false);
+  assert.equal(f.storage.get('jgv3d_orders'), '[{"id":"demo"}]');
+  assert.equal(f.storage.get('jgv3d_cart'), 'keep');
+  assert.deepEqual(f.deletions, []);
+});
+
+test('blocked demo reset reports retry in the Orders tab without touching Firestore or cart data', async () => {
+  const f = fixture({ blockedStorage: true });
+  const pending = f.get('reset-orders').emit('click');
+  await confirmTwice(f);
+  await pending;
+  assert.match(f.get('orders-status').textContent, /reset failed.*Retry.*Firestore orders are unchanged/);
+  assert.equal(f.get('reset-orders').disabled, false);
+  assert.equal(f.storage.get('jgv3d_cart'), 'keep');
+  assert.equal(f.storage.get('jgv3d_orders'), '[{"id":"demo"}]');
+  assert.deepEqual(f.deletions, []);
+});
+
+test('logout intent immediately invalidates an already loaded core service before Firebase auth emits', async () => {
+  const calls = [];
+  const service = { listOrders: async () => [], invalidate() { calls.push('invalidate'); }, dispose() { calls.push('dispose'); } };
+  const f = fixture({ orderLoader: async () => service });
+  await f.page.loadAccountOrders();
+  const pending = f.get('logout-btn').emit('click');
+  assert.deepEqual(calls, ['invalidate', 'dispose']);
+  await pending;
+});
+
+test('retired deferred service invalidation cannot invalidate a newer loaded account service', async () => {
+  let resolveOld;
+  let loads = 0;
+  const calls = [];
+  const oldService = { invalidate() { calls.push('old invalidate'); }, dispose() { calls.push('old dispose'); } };
+  const newService = { invalidate() { calls.push('new invalidate'); }, dispose() { calls.push('new dispose'); } };
+  const f = fixture({ orderLoader: () => ++loads === 1
+    ? new Promise(resolve => { resolveOld = resolve; }) : Promise.resolve(newService) });
+  const retired = f.page.orderServiceFor('admin-current').catch(error => error);
+  f.page.clearPendingOrderActions();
+  assert.equal(await f.page.orderServiceFor('admin-current'), newService);
+  resolveOld(oldService);
+  const outcome = await retired;
+  assert.match(outcome.message, /Admin account changed/);
+  assert.deepEqual(calls, ['old invalidate', 'old dispose']);
+  assert.equal(await f.page.orderServiceFor('admin-current'), newService);
+  assert.equal(loads, 2);
 });
