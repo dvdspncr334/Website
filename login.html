@@ -239,6 +239,7 @@
       <div class="profile-actions">
         <a href="orders.html" class="auth-btn auth-btn-primary">View My Orders</a>
         <a href="shop.html" class="auth-btn auth-btn-outline">Continue Shopping</a>
+        <a href="admin.html" class="auth-btn auth-btn-outline" id="admin-link" hidden>Admin Dashboard</a>
         <button type="button" class="auth-btn auth-btn-danger" id="signout-btn">Sign Out</button>
       </div>
     </section>
@@ -250,14 +251,16 @@
 
   <script type="module">
     import {
-      onUserChanged, signInWithGoogle, signInWithEmail,
+      auth, onUserChanged, signInWithGoogle, signInWithEmail,
       createAccountWithEmail, resetPassword, signOut, friendlyError
     } from './auth-firebase.js';
+    import { isAdmin } from './admin-auth.js';
 
     const $ = (id) => document.getElementById(id);
     const views = { loading: $('view-loading'), out: $('view-signed-out'), in: $('view-signed-in') };
     let mode = 'signin';
     let busy = false;
+    const adminDenied = new URLSearchParams(location.search).get('admin') === 'denied';
 
     function showView(name) {
       Object.entries(views).forEach(([key, el]) => { el.hidden = key !== name; });
@@ -316,12 +319,20 @@
     // Single source of truth: Firebase tells us when the user signs in or out.
     onUserChanged((user) => {
       setBusy(false);
+      $('admin-link').hidden = true;
       if (user) {
         renderUser(user);
         showView('in');
+        const uid = user.id;
+        isAdmin().then(ok => {
+          if (!auth.currentUser || auth.currentUser.uid !== uid) return;
+          $('admin-link').hidden = !ok;
+          if (adminDenied && !ok) showMessage($('profile-message'), 'This account doesn\'t have admin access.', 'error');
+        }).catch(() => {});
       } else {
         $('auth-form').reset();
         showView('out');
+        if (adminDenied) showMessage($('message'), 'Sign in with an admin account to open the admin dashboard.', 'error');
       }
     });
 

@@ -103,3 +103,19 @@
 - PASS: signing out brought back the unchanged guest cart. Signing in as B showed an empty cart.
 - PASS: guest checkout created a local demo order and then emptied the guest cart.
 - Note (pre-existing, unrelated): the first shop card renders with an empty product id, so its "Add to Cart" does nothing. This also happens with the shop page from before this change.
+
+## Admin Dashboard
+
+### Automated (`npm test`): passing
+- `test/shop-csv.test.mjs`: the real `data/shop.csv` parses, validates and round-trips; quoting; validation of ids, prices, pipe lists, paths and markup.
+- `test/admin-auth.test.mjs`: `isAdmin` sessionStorage cache per UID (TTL, force, clear, errors never cached); activity throttling.
+- `test/admin-page.test.mjs`: page gating/redirects, logout/back link, no cart badge, no `innerHTML`/console logging/token storage, orders labelled browser-local.
+
+### Not executed in the development sandbox
+- `npm run test:rules` (new admin / userActivity emulator tests in `test/firestore-rules.test.mjs`): the Firestore emulator download was blocked. Run it locally before publishing the rules.
+- The live Firebase project and the GitHub API commit were not exercised.
+
+### Manual browser walkthrough (local server, in-memory stand-ins for the Firebase SDK modules)
+- Signed out → redirected to `login.html`; non-admin → `login.html?admin=denied` with a message.
+- Console-bootstrapped admin → dashboard loads with no cart badge; product add/edit/delete with validation errors; Download CSV produced the expected file.
+- User Activity, Orders (read-only, browser-local notice, markup shown as text), Settings: invalid email / unknown user / already-admin errors, add and remove admin, remove self → access denied; logout clears the admin cache; 390px-wide layout.

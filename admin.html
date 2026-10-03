@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" type="image/x-icon" href="images/favicon.ico">
+  <title>Admin Dashboard | JGV3D Guitar Bodies</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="admin-page">
+  <header class="header">
+    <h1>Admin Dashboard</h1>
+    <div class="header-buttons">
+      <a href="index.html">&larr; Back to site</a>
+      <a href="shop.html">Shop</a>
+      <span class="admin-user" id="admin-user"></span>
+      <button type="button" class="admin-btn admin-btn-danger" id="logout-btn" hidden>Log out</button>
+    </div>
+  </header>
+
+  <nav class="admin-breadcrumb" aria-label="Breadcrumb">
+    <a href="index.html">Home</a> <span aria-hidden="true">&rsaquo;</span> <span aria-current="page">Admin</span>
+  </nav>
+
+  <main class="admin-container">
+    <!-- Access check -->
+    <section id="admin-gate" class="admin-card" aria-live="polite">
+      <p id="gate-message" class="admin-status">Checking admin access…</p>
+      <button type="button" class="admin-btn" id="gate-retry" hidden>Retry</button>
+      <a href="login.html" class="admin-btn admin-btn-outline" id="gate-login" hidden>Go to login</a>
+    </section>
+
+    <div id="admin-app" hidden>
+      <div class="admin-tabs" role="tablist" aria-label="Admin sections">
+        <button type="button" class="admin-tab active" role="tab" id="tab-shop" aria-controls="panel-shop" aria-selected="true" data-panel="panel-shop">Shop Management</button>
+        <button type="button" class="admin-tab" role="tab" id="tab-activity" aria-controls="panel-activity" aria-selected="false" data-panel="panel-activity">User Activity</button>
+        <button type="button" class="admin-tab" role="tab" id="tab-orders" aria-controls="panel-orders" aria-selected="false" data-panel="panel-orders">Orders Overview</button>
+        <button type="button" class="admin-tab" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false" data-panel="panel-settings">Settings</button>
+      </div>
+
+      <!-- Shop Management -->
+      <section id="panel-shop" class="admin-panel" role="tabpanel" aria-labelledby="tab-shop">
+        <div class="admin-card">
+          <h2>Products (data/shop.csv)</h2>
+          <p class="admin-note">Changes here are kept in this page only until you <strong>download</strong> the CSV or <strong>commit</strong> it to GitHub below. The live shop updates after GitHub Pages redeploys (usually a minute or two).</p>
+          <div class="admin-toolbar">
+            <input type="search" id="product-search" class="admin-input" placeholder="Filter by id, title or category" aria-label="Filter products">
+            <button type="button" class="admin-btn" id="add-product-btn">Add product</button>
+            <button type="button" class="admin-btn admin-btn-outline" id="reload-csv-btn">Reload from site</button>
+            <button type="button" class="admin-btn admin-btn-outline" id="download-csv-btn">Download CSV</button>
+          </div>
+          <p id="shop-status" class="admin-status" role="status"></p>
+          <button type="button" class="admin-btn" id="shop-retry" hidden>Retry</button>
+          <div class="admin-table-wrap">
+            <table class="admin-table" id="product-table">
+              <thead>
+                <tr><th>ID</th><th>Title</th><th>Price</th><th>Category</th><th>Status</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="product-rows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <form id="product-form" class="admin-card" hidden novalidate>
+          <h2 id="product-form-title">Edit product</h2>
+          <div class="admin-form-grid" id="product-fields"></div>
+          <p id="product-form-message" class="admin-status" role="alert"></p>
+          <div class="admin-toolbar">
+            <button type="submit" class="admin-btn">Save to list</button>
+            <button type="button" class="admin-btn admin-btn-outline" id="product-cancel">Cancel</button>
+          </div>
+        </form>
+
+        <div class="admin-card">
+          <h2>Save to GitHub (optional)</h2>
+          <p class="admin-note">Commits the edited CSV to <code>data/shop.csv</code> with the GitHub API. Needs a fine-grained personal access token limited to this repository with <em>Contents: Read and write</em>. The token is only kept in this page's memory, is sent only to <code>api.github.com</code>, and is cleared after a successful commit. If you'd rather not use a token, click <strong>Download CSV</strong> and upload/commit the file yourself.</p>
+          <form id="github-form" class="admin-form-grid" novalidate>
+            <label class="admin-field">Owner<input class="admin-input" id="gh-owner" value="dvdspncr334" autocomplete="off" required></label>
+            <label class="admin-field">Repository<input class="admin-input" id="gh-repo" value="Website" autocomplete="off" required></label>
+            <label class="admin-field">Branch<input class="admin-input" id="gh-branch" value="main" autocomplete="off" required></label>
+            <label class="admin-field">Commit message<input class="admin-input" id="gh-message" value="Update shop products from admin dashboard" maxlength="200" required></label>
+            <label class="admin-field admin-field-wide">Personal access token<input class="admin-input" id="gh-token" type="password" autocomplete="off" spellcheck="false" required></label>
+            <div class="admin-field-wide admin-toolbar">
+              <button type="submit" class="admin-btn" id="gh-commit-btn">Commit data/shop.csv</button>
+            </div>
+          </form>
+          <p id="gh-status" class="admin-status" role="status"></p>
+        </div>
+      </section>
+
+      <!-- User Activity -->
+      <section id="panel-activity" class="admin-panel" role="tabpanel" aria-labelledby="tab-activity" hidden>
+        <div class="admin-card">
+          <h2>Recent user activity</h2>
+          <p class="admin-note">Each signed-in visitor records their own email, last sign-in time and last activity time (at most every 15 minutes) in Firestore <code>userActivity/{uid}</code>. Only admins can read it. Users who haven't signed in since this was deployed won't appear.</p>
+          <div class="admin-toolbar">
+            <button type="button" class="admin-btn admin-btn-outline" id="activity-refresh">Refresh</button>
+          </div>
+          <p id="activity-status" class="admin-status" role="status"></p>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead><tr><th>Email</th><th>Last sign-in</th><th>Last active</th><th>UID</th></tr></thead>
+              <tbody id="activity-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Orders Overview -->
+      <section id="panel-orders" class="admin-panel" role="tabpanel" aria-labelledby="tab-orders" hidden>
+        <div class="admin-card">
+          <h2>Orders overview</h2>
+          <p class="admin-note admin-warning"><strong>Orders are browser-local demo data.</strong> Checkout saves orders only in the shopper's own browser (<code>localStorage</code>). They are not sent to a server, so customers' orders can't be viewed or managed here. The table below only shows demo orders placed in <em>this</em> browser, read-only, for reference.</p>
+          <p id="orders-status" class="admin-status" role="status"></p>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead><tr><th>Order</th><th>Date</th><th>Status</th><th>Items</th><th>Total</th></tr></thead>
+              <tbody id="order-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Settings -->
+      <section id="panel-settings" class="admin-panel" role="tabpanel" aria-labelledby="tab-settings" hidden>
+        <div class="admin-card">
+          <h2>Admin users</h2>
+          <form id="add-admin-form" class="admin-toolbar" novalidate>
+            <label class="sr-only" for="add-admin-email">Email of the user to make an admin</label>
+            <input type="email" id="add-admin-email" class="admin-input" placeholder="user@example.com" autocomplete="off" maxlength="320" required>
+            <button type="submit" class="admin-btn" id="add-admin-btn">Add admin</button>
+          </form>
+          <p class="admin-note">The person must have signed in to the site at least once (so they appear under User Activity).</p>
+          <p id="admins-status" class="admin-status" role="status"></p>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead><tr><th>Email</th><th>UID</th><th>Added</th><th>Actions</th></tr></thead>
+              <tbody id="admin-rows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="admin-card">
+          <h2>Firestore rules status</h2>
+          <p class="admin-note">Browsers can't read the published rules, so this runs a few read checks that only pass when the rules from <code>firestore.rules</code> are published. Compare the Rules tab in the Firebase Console with the repo file to be sure.</p>
+          <div class="admin-toolbar">
+            <button type="button" class="admin-btn admin-btn-outline" id="rules-check-btn">Re-check</button>
+          </div>
+          <ul id="rules-status" class="admin-checklist"></ul>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <p>&copy; JGV3D &middot; Admin view</p>
+  </footer>
+
+  <script type="module">
+    import { loadFirebase, isAdmin, clearAdminCache } from './admin-auth.js';
+    import {
+      SHOP_COLUMNS, HANDEDNESS_VALUES, STATUS_VALUES,
+      parseShopCSV, serializeShopCSV, validateProduct, validateAll, normalizeProduct
+    } from './shop-csv.js';
+
+    const $ = id => document.getElementById(id);
+    const EMAIL_RE = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
+    let fb = null;
+    let currentUid = null;
+    const loaded = {};
+
+    function setStatus(el, text, type = '') {
+      el.textContent = text || '';
+      el.className = `admin-status${type ? ` is-${type}` : ''}`;
+    }
+
+    function cell(text) {
+      const td = document.createElement('td');
+      td.textContent = text == null ? '' : String(text);
+      return td;
+    }
+
+    function formatTime(value) {
+      const date = value && typeof value.toDate === 'function' ? value.toDate() : (value ? new Date(value) : null);
+      return date && !isNaN(date.getTime()) ? date.toLocaleString() : '—';
+    }
+
+    function isPermissionError(error) {
+      return error && error.code === 'permission-denied';
+    }
+
+    function friendlyFirestoreError(error) {
+      if (isPermissionError(error)) return 'Permission denied. Make sure your account is an admin and the latest firestore.rules are published.';
+      if (error && (error.code === 'unavailable' || error.code === 'deadline-exceeded')) return 'Network error. Check your connection and try again.';
+      if (error && error.code === 'failed-precondition') return 'Firestore isn\'t ready (is the database created?).';
+      return 'Something went wrong. Please try again.';
+    }
+
+    // If Firestore says no, our cached admin status may be stale (e.g. we
+    // were removed): re-check and leave the page if we're no longer an admin.
+    async function handleDataError(error) {
+      if (!isPermissionError(error)) return;
+      clearAdminCache(currentUid);
+      try {
+        if (!(await isAdmin({ force: true }))) location.replace('login.html?admin=denied');
+      } catch (e) { /* keep the error message on screen */ }
+    }
+
+    /* ---------------- Access gate ---------------- */
+    function showGate(text, { retry = false, login = false } = {}) {
+      $('admin-app').hidden = true;
+      $('admin-gate').hidden = false;
+      $('gate-message').textContent = text;
+      $('gate-retry').hidden = !retry;
+      $('gate-login').hidden = !login;
+    }
+
+    async function start() {
+      showGate('Checking admin access…');
+      try {
+        fb = await loadFirebase();
+      } catch (e) {
+        showGate('Couldn\'t load Firebase. Check your connection and try again.', { retry: true });
+        return;
+      }
+      fb.onUserChanged(user => { gate(user); });
+    }
+
+    async function gate(user) {
+      if (!user) {
+        clearAdminCache();
+        location.replace('login.html');
+        return;
+      }
+      if (currentUid) {
+        // Same user re-emitted (e.g. token refresh): keep the dashboard as is.
+        // A different account signed in from another tab: start over cleanly.
+        if (currentUid !== user.id) location.reload();
+        return;
+      }
+      showGate('Checking admin access…');
+      let allowed = false;
+      try {
+        allowed = await isAdmin();
+        // Never deny from a cached answer: the user may have just been added.
+        if (!allowed) allowed = await isAdmin({ force: true });
+      } catch (error) {
+        showGate(`Couldn't check admin access. ${friendlyFirestoreError(error)}`, { retry: true, login: true });
+        return;
+      }
+      if (!allowed) {
+        location.replace('login.html?admin=denied');
+        return;
+      }
+      currentUid = user.id;
+      $('admin-user').textContent = user.email;
+      $('logout-btn').hidden = false;
+      $('admin-gate').hidden = true;
+      $('admin-app').hidden = false;
+      openPanel('panel-shop');
+    }
+
+    $('gate-retry').addEventListener('click', () => {
+      if (!fb) { start(); return; }
+      fb.getSession().then(gate);
+    });
+
+    $('logout-btn').addEventListener('click', async () => {
+      if (dirty && !confirm('You have unsaved product changes. Log out anyway?')) return;
+      dirty = false;
+      clearAdminCache();
+      try {
+        await fb.signOut();
+      } catch (e) {
+        alert('Sign out failed. Please try again.');
+      }
+    });
+
+    /* ---------------- Tabs ---------------- */
+    const loaders = {
+      'panel-shop': () => loadCSV(),
+      'panel-activity': () => loadActivity(),
+      'panel-orders': () => loadOrders(),
+      'panel-settings': () => { loadAdmins(); checkRules(); }
+    };
+
+    function openPanel(id) {
+      document.querySelectorAll('.admin-tab').forEach(tab => {
+        const active = tab.dataset.panel === id;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', String(active));
+      });
+      document.querySelectorAll('.admin-panel').forEach(panel => { panel.hidden = panel.id !== id; });
+      if (!loaded[id]) {
+        loaded[id] = true;
+        loaders[id]();
+      }
+    }
+
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+      tab.addEventListener('click', () => openPanel(tab.dataset.panel));
+    });
+
+    /* ---------------- Shop CSV editor ---------------- */
+    let headers = [...SHOP_COLUMNS];
+    let rows = [];
+    let dirty = false;
+    let editingIndex = -1;
+    let baseSha = null; // git blob SHA of the CSV the edits are based on
+
+    async function gitBlobSha(bytes) {
+      const header = new TextEncoder().encode(`blob ${bytes.length}\0`);
+      const data = new Uint8Array(header.length + bytes.length);
+      data.set(header);
+      data.set(bytes, header.length);
+      const digest = new Uint8Array(await crypto.subtle.digest('SHA-1', data));
+      return [...digest].map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    const FIELD_INFO = {
+      id: { label: 'ID', hint: 'Unique, lowercase-with-dashes (e.g. strat-hss-normal).' },
+      title: { label: 'Title' },
+      price: { label: 'Price (USD)', hint: 'e.g. 199.99' },
+      img: { label: 'Main image', hint: 'images/... path or https:// URL.' },
+      category: { label: 'Category', hint: 'e.g. stratocaster' },
+      subcategory: { label: 'Subcategory', hint: 'e.g. standard-hss' },
+      handedness: { label: 'Handedness', options: HANDEDNESS_VALUES },
+      colors: { label: 'Colors', hint: 'Pipe-delimited: Red|Blue|Black', wide: true },
+      custom_color_fee: { label: 'Custom color fee', hint: 'Number, e.g. 30' },
+      pickup_configs: { label: 'Pickup configs', hint: 'Pipe-delimited: HSS|SSS' },
+      status: { label: 'Status', options: STATUS_VALUES },
+      tag: { label: 'Tag', hint: 'Optional badge, e.g. new or sale.' },
+      discount: { label: 'Discount %', hint: '0–100, optional.' },
+      description: { label: 'Description', textarea: true, wide: true },
+      color_images: { label: 'Color images', hint: 'Color:path pairs: Red:images/a.png|Blue:images/b.png', textarea: true, wide: true }
+    };
+
+    function setDirty(value) {
+      dirty = value;
+      if (dirty) setStatus($('shop-status'), `${rows.length} products · unsaved changes (download or commit to keep them).`, 'warning');
+    }
+
+    window.addEventListener('beforeunload', event => {
+      if (dirty) { event.preventDefault(); event.returnValue = ''; }
+    });
+
+    async function loadCSV() {
+      if (dirty && !confirm('Discard your unsaved product changes and reload data/shop.csv?')) return;
+      $('shop-retry').hidden = true;
+      setStatus($('shop-status'), 'Loading data/shop.csv…');
+      $('product-rows').textContent = '';
+      try {
+        const response = await fetch('data/shop.csv', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        baseSha = await gitBlobSha(bytes);
+        const parsed = parseShopCSV(new TextDecoder().decode(bytes));
+        headers = parsed.headers;
+        rows = parsed.rows;
+        dirty = false;
+        closeForm();
+        renderProducts();
+        const skipped = parsed.skipped.length ? ` ${parsed.skipped.length} malformed line(s) skipped (lines ${parsed.skipped.join(', ')}); they will be dropped if you save.` : '';
+        setStatus($('shop-status'), `Loaded ${rows.length} products.${skipped}`, skipped ? 'warning' : 'ok');
+      } catch (e) {
+        setStatus($('shop-status'), 'Couldn\'t load data/shop.csv. Check your connection and try again.', 'error');
+        $('shop-retry').hidden = false;
+      }
+    }
+
+    function renderProducts() {
+      const filter = $('product-search').value.trim().toLowerCase();
+      const body = $('product-rows');
+      body.textContent = '';
+      rows.forEach((row, index) => {
+        const haystack = `${row.id} ${row.title} ${row.category} ${row.subcategory}`.toLowerCase();
+        if (filter && !haystack.includes(filter)) return;
+        const tr = document.createElement('tr');
+        tr.append(cell(row.id), cell(row.title), cell(row.price ? `$${row.price}` : ''), cell(row.category), cell(row.status));
+        const actions = document.createElement('td');
+        actions.className = 'admin-actions';
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'admin-btn admin-btn-small';
+        edit.textContent = 'Edit';
+        edit.addEventListener('click', () => openForm(index));
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'admin-btn admin-btn-small admin-btn-danger';
+        remove.textContent = 'Delete';
+        remove.addEventListener('click', () => deleteProduct(index));
+        actions.append(edit, remove);
+        tr.append(actions);
+        body.append(tr);
+      });
+      if (!body.children.length) {
+        const tr = document.createElement('tr');
+        const td = cell(rows.length ? 'No products match the filter.' : 'No products yet.');
+        td.colSpan = 6;
+        tr.append(td);
+        body.append(tr);
+      }
+    }
+
+    function buildFields() {
+      const container = $('product-fields');
+      container.textContent = '';
+      for (const name of headers) {
+        const info = FIELD_INFO[name] || { label: name };
+        const label = document.createElement('label');
+        label.className = `admin-field${info.wide ? ' admin-field-wide' : ''}`;
+        label.append(document.createTextNode(info.label));
+        let input;
+        if (info.options) {
+          input = document.createElement('select');
+          for (const value of info.options) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = value || '(none)';
+            input.append(option);
+          }
+        } else if (info.textarea) {
+          input = document.createElement('textarea');
+          input.rows = 3;
+        } else {
+          input = document.createElement('input');
+          input.type = 'text';
+          if (name === 'price' || name === 'custom_color_fee' || name === 'discount') input.inputMode = 'decimal';
+        }
+        input.className = 'admin-input';
+        input.name = name;
+        input.id = `field-${name}`;
+        label.append(input);
+        if (info.hint) {
+          const hint = document.createElement('small');
+          hint.className = 'admin-hint';
+          hint.textContent = info.hint;
+          label.append(hint);
+        }
+        const error = document.createElement('small');
+        error.className = 'admin-field-error';
+        error.id = `error-${name}`;
+        error.setAttribute('aria-live', 'polite');
+        label.append(error);
+        container.append(label);
+      }
+    }
+
+    function openForm(index) {
+      editingIndex = index;
+      buildFields();
+      const product = index >= 0 ? rows[index] : normalizeProduct({}, headers);
+      for (const name of headers) {
+        const input = $(`field-${name}`);
+        const value = product[name] || '';
+        if (input.tagName === 'SELECT' && ![...input.options].some(o => o.value === value)) {
+          const option = document.createElement('option');
+          option.value = value;
+          option.textContent = `${value} (invalid)`;
+          input.append(option);
+        }
+        input.value = value;
+      }
+      $('product-form-title').textContent = index >= 0 ? `Edit product: ${product.id}` : 'Add product';
+      setStatus($('product-form-message'), '');
+      $('product-form').hidden = false;
+      $('field-id').focus();
+      $('product-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function closeForm() {
+      editingIndex = -1;
+      $('product-form').hidden = true;
+    }
+
+    $('product-form').addEventListener('submit', event => {
+      event.preventDefault();
+      const product = {};
+      for (const name of headers) product[name] = $(`field-${name}`).value;
+      const normalized = normalizeProduct(product, headers);
+      const others = rows.filter((_, i) => i !== editingIndex);
+      const errors = validateProduct(normalized, others);
+      for (const name of headers) $(`error-${name}`).textContent = errors[name] || '';
+      if (Object.keys(errors).length) {
+        setStatus($('product-form-message'), 'Please fix the highlighted fields.', 'error');
+        const first = headers.find(name => errors[name]);
+        if (first) $(`field-${first}`).focus();
+        return;
+      }
+      if (editingIndex >= 0) rows[editingIndex] = normalized;
+      else rows.push(normalized);
+      closeForm();
+      renderProducts();
+      setDirty(true);
+    });
+
+    $('product-cancel').addEventListener('click', closeForm);
+    $('add-product-btn').addEventListener('click', () => openForm(-1));
+    $('reload-csv-btn').addEventListener('click', () => loadCSV());
+    $('shop-retry').addEventListener('click', () => loadCSV());
+    $('product-search').addEventListener('input', renderProducts);
+
+    function deleteProduct(index) {
+      const row = rows[index];
+      if (!row || !confirm(`Delete product "${row.id}" (${row.title})? This only changes the list here until you download or commit the CSV.`)) return;
+      rows.splice(index, 1);
+      if (editingIndex === index) closeForm();
+      else if (editingIndex > index) editingIndex -= 1;
+      renderProducts();
+      setDirty(true);
+    }
+
+    // Returns the CSV text, or null (with a message) if any row is invalid.
+    function exportCSV(statusEl) {
+      const problems = validateAll(rows);
+      if (problems.length) {
+        const list = problems.slice(0, 5).map(p => `row ${p.index + 1} (${p.id || 'no id'}): ${Object.values(p.errors)[0]}`).join('; ');
+        setStatus(statusEl, `Fix ${problems.length} invalid product(s) first — ${list}`, 'error');
+        return null;
+      }
+      return serializeShopCSV(headers, rows);
+    }
+
+    $('download-csv-btn').addEventListener('click', () => {
+      const csv = exportCSV($('shop-status'));
+      if (csv === null) return;
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'shop.csv';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setStatus($('shop-status'), 'Downloaded shop.csv. Replace data/shop.csv in the repository with it to publish.', 'ok');
+    });
+
+    /* ---------------- GitHub commit (optional) ---------------- */
+    function utf8ToBase64(text) {
+      const bytes = new TextEncoder().encode(text);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+      return btoa(binary);
+    }
+
+    class GitHubError extends Error {}
+
+    function githubError(status) {
+      if (status === 401) return 'GitHub rejected the token (401). Check that it is valid and not expired.';
+      if (status === 403) return 'GitHub denied access (403). The token needs Contents: Read and write on this repository.';
+      if (status === 404) return 'Repository, branch or file not found (404), or the token can\'t see this repository.';
+      if (status === 409 || status === 422) return 'GitHub reported a conflict (the file changed or the branch is protected). Reload from site and try again.';
+      return `GitHub request failed (${status}). Please try again.`;
+    }
+
+    $('github-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const status = $('gh-status');
+      const owner = $('gh-owner').value.trim();
+      const repo = $('gh-repo').value.trim();
+      const branch = $('gh-branch').value.trim();
+      const message = $('gh-message').value.trim();
+      const token = $('gh-token').value.trim();
+      if (!/^[A-Za-z0-9-]{1,39}$/.test(owner) || !/^[A-Za-z0-9._-]{1,100}$/.test(repo) || repo.includes('..')) {
+        setStatus(status, 'Enter a valid owner and repository name.', 'error');
+        return;
+      }
+      if (!/^[A-Za-z0-9._/-]{1,200}$/.test(branch) || branch.includes('..') || branch.startsWith('/') || branch.endsWith('/')) {
+        setStatus(status, 'Enter a valid branch name.', 'error');
+        return;
+      }
+      if (!message) { setStatus(status, 'Enter a commit message.', 'error'); return; }
+      if (!/^[A-Za-z0-9_]{20,255}$/.test(token)) {
+        setStatus(status, 'Enter a GitHub personal access token (or use Download CSV instead).', 'error');
+        return;
+      }
+      const csv = exportCSV(status);
+      if (csv === null) return;
+      if (!confirm(`Commit data/shop.csv (${rows.length} products) to ${owner}/${repo} on branch "${branch}"?`)) return;
+
+      const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/data/shop.csv`;
+      const requestHeaders = {
+        Accept: 'application/vnd.github+json',
+        Authorization: 'Bearer ' + token,
+        'X-GitHub-Api-Version': '2022-11-28'
+      };
+      $('gh-commit-btn').disabled = true;
+      setStatus(status, 'Committing to GitHub…');
+      try {
+        const current = await fetch(`${url}?ref=${encodeURIComponent(branch)}`, { headers: requestHeaders, cache: 'no-store' });
+        if (!current.ok) throw new GitHubError(githubError(current.status));
+        const { sha } = await current.json();
+        if (sha !== baseSha) {
+          throw new GitHubError('data/shop.csv on GitHub is different from the copy you loaded (someone else changed it, or GitHub Pages hasn\'t redeployed yet). Download your CSV to keep your edits, then Reload from site and try again.');
+        }
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers: { ...requestHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message, content: utf8ToBase64(csv), sha, branch })
+        });
+        if (!response.ok) throw new GitHubError(githubError(response.status));
+        const result = await response.json().catch(() => null);
+        baseSha = result && result.content && result.content.sha ? result.content.sha : null;
+        $('gh-token').value = '';
+        dirty = false;
+        setStatus(status, 'Committed. GitHub Pages will redeploy the shop shortly.', 'ok');
+        setStatus($('shop-status'), `${rows.length} products · committed to GitHub.`, 'ok');
+      } catch (error) {
+        setStatus(status, error instanceof GitHubError
+          ? error.message
+          : 'Couldn\'t reach GitHub. Check your connection, or use Download CSV instead.', 'error');
+      } finally {
+        $('gh-commit-btn').disabled = false;
+      }
+    });
+
+    /* ---------------- User activity ---------------- */
+    async function loadActivity() {
+      const status = $('activity-status');
+      const body = $('activity-rows');
+      setStatus(status, 'Loading recent activity…');
+      body.textContent = '';
+      try {
+        const { fs, db } = fb;
+        const snap = await fs.getDocs(fs.query(fs.collection(db, 'userActivity'), fs.orderBy('lastActiveAt', 'desc'), fs.limit(50)));
+        snap.forEach(doc => {
+          const data = doc.data();
+          const tr = document.createElement('tr');
+          tr.append(cell(data.email), cell(formatTime(data.lastSignInAt)), cell(formatTime(data.lastActiveAt)), cell(doc.id));
+          body.append(tr);
+        });
+        setStatus(status, snap.empty ? 'No activity recorded yet.' : `Showing the ${snap.size} most recently active user(s).`, 'ok');
+      } catch (error) {
+        setStatus(status, `Couldn't load activity. ${friendlyFirestoreError(error)} Use Refresh to retry.`, 'error');
+        handleDataError(error);
+      }
+    }
+    $('activity-refresh').addEventListener('click', loadActivity);
+
+    /* ---------------- Orders (browser-local, read-only) ---------------- */
+    function loadOrders() {
+      const body = $('order-rows');
+      body.textContent = '';
+      let orders = [];
+      try {
+        const parsed = JSON.parse(localStorage.getItem('jgv3d_orders') || '[]');
+        orders = Array.isArray(parsed) ? parsed.filter(o => o && typeof o === 'object') : [];
+      } catch (e) {
+        orders = [];
+      }
+      for (const order of orders.slice(0, 100)) {
+        const items = Array.isArray(order.items) ? order.items : [];
+        const count = items.reduce((sum, item) => sum + (Number(item && item.qty) || 1), 0);
+        const total = typeof order.total === 'number' ? `$${order.total.toFixed(2)}` : '—';
+        const tr = document.createElement('tr');
+        tr.append(cell(order.id || '—'), cell(formatTime(order.date)), cell(order.status || 'In Queue'), cell(count), cell(total));
+        body.append(tr);
+      }
+      setStatus($('orders-status'), orders.length
+        ? `${orders.length} demo order(s) stored in this browser.`
+        : 'No demo orders in this browser.', 'ok');
+    }
+
+    /* ---------------- Admin users ---------------- */
+    async function loadAdmins() {
+      const status = $('admins-status');
+      const body = $('admin-rows');
+      setStatus(status, 'Loading admins…');
+      body.textContent = '';
+      try {
+        const { fs, db } = fb;
+        const snap = await fs.getDocs(fs.collection(db, 'admins'));
+        snap.forEach(doc => {
+          const data = doc.data();
+          const tr = document.createElement('tr');
+          const isSelf = doc.id === currentUid;
+          tr.append(cell(`${data.email || '(no email saved)'}${isSelf ? ' (you)' : ''}`), cell(doc.id), cell(data.addedAt ? formatTime(data.addedAt) : 'Console'));
+          const actions = document.createElement('td');
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.className = 'admin-btn admin-btn-small admin-btn-danger';
+          remove.textContent = 'Remove';
+          remove.addEventListener('click', () => removeAdmin(doc.id, data.email || doc.id, snap.size));
+          actions.append(remove);
+          tr.append(actions);
+          body.append(tr);
+        });
+        setStatus(status, `${snap.size} admin(s).`, 'ok');
+      } catch (error) {
+        setStatus(status, `Couldn't load admins. ${friendlyFirestoreError(error)}`, 'error');
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'admin-btn admin-btn-small';
+        retry.textContent = 'Retry';
+        retry.addEventListener('click', loadAdmins);
+        status.append(' ', retry);
+        handleDataError(error);
+      }
+    }
+
+    async function removeAdmin(uid, label, listedCount) {
+      const self = uid === currentUid;
+      let adminCount = listedCount;
+      if (self) {
+        try {
+          const { fs, db } = fb;
+          adminCount = (await fs.getDocs(fs.collection(db, 'admins'))).size;
+        } catch (e) { /* fall back to the listed count */ }
+      }
+      let question = `Remove admin access for ${label}?`;
+      if (self) {
+        question = adminCount <= 1
+          ? `You are the only admin. Removing yourself means nobody can use this dashboard until an admin is added again in the Firebase Console. Remove yourself?`
+          : 'Remove your own admin access? You will be signed out of this dashboard immediately.';
+      }
+      if (!confirm(question)) return;
+      const status = $('admins-status');
+      setStatus(status, 'Removing…');
+      try {
+        const { fs, db } = fb;
+        await fs.deleteDoc(fs.doc(db, 'admins', uid));
+        clearAdminCache(uid);
+        if (self) {
+          location.replace('login.html?admin=denied');
+          return;
+        }
+        await loadAdmins();
+        setStatus(status, `Removed admin access for ${label}.`, 'ok');
+      } catch (error) {
+        setStatus(status, `Couldn't remove admin. ${friendlyFirestoreError(error)}`, 'error');
+        handleDataError(error);
+      }
+    }
+
+    $('add-admin-form').addEventListener('submit', async event => {
+      event.preventDefault();
+      const status = $('admins-status');
+      const email = $('add-admin-email').value.trim();
+      if (!email || email.length > 320 || !EMAIL_RE.test(email)) {
+        setStatus(status, 'Enter a valid email address.', 'error');
+        return;
+      }
+      $('add-admin-btn').disabled = true;
+      setStatus(status, 'Looking up user…');
+      try {
+        const { fs, db } = fb;
+        const candidates = [...new Set([email, email.toLowerCase()])];
+        const found = await fs.getDocs(fs.query(fs.collection(db, 'userActivity'), fs.where('email', 'in', candidates), fs.limit(2)));
+        if (found.empty) {
+          setStatus(status, `No user with email ${email} found. They need to sign in to the site once, then try again.`, 'error');
+          return;
+        }
+        if (found.size > 1) {
+          setStatus(status, 'More than one account matches that email. Add the admin in the Firebase Console instead.', 'error');
+          return;
+        }
+        const userDoc = found.docs[0];
+        const existing = await fs.getDoc(fs.doc(db, 'admins', userDoc.id));
+        if (existing.exists()) {
+          setStatus(status, `${email} is already an admin.`, 'error');
+          return;
+        }
+        if (!confirm(`Give ${userDoc.get('email')} (UID ${userDoc.id}) full admin access?`)) {
+          setStatus(status, '');
+          return;
+        }
+        await fs.setDoc(fs.doc(db, 'admins', userDoc.id), {
+          email: userDoc.get('email'),
+          addedBy: currentUid,
+          addedAt: fs.serverTimestamp()
+        });
+        $('add-admin-email').value = '';
+        await loadAdmins();
+        setStatus(status, `${userDoc.get('email')} is now an admin.`, 'ok');
+      } catch (error) {
+        setStatus(status, `Couldn't add admin. ${friendlyFirestoreError(error)}`, 'error');
+        handleDataError(error);
+      } finally {
+        $('add-admin-btn').disabled = false;
+      }
+    });
+
+    /* ---------------- Rules status ---------------- */
+    async function checkRules() {
+      const list = $('rules-status');
+      list.textContent = '';
+      const { fs, db } = fb;
+      const checks = [
+        ['Read your own admins/{uid} document', () => fs.getDoc(fs.doc(db, 'admins', currentUid))],
+        ['List the admins collection (admins only)', () => fs.getDocs(fs.query(fs.collection(db, 'admins'), fs.limit(1)))],
+        ['Read userActivity (admins only)', () => fs.getDocs(fs.query(fs.collection(db, 'userActivity'), fs.limit(1)))]
+      ];
+      let passed = 0;
+      for (const [label, run] of checks) {
+        const li = document.createElement('li');
+        li.textContent = `… ${label}`;
+        list.append(li);
+        try {
+          await run();
+          li.textContent = `✔ ${label}`;
+          li.className = 'is-ok';
+          passed += 1;
+        } catch (error) {
+          li.textContent = `✘ ${label} — ${friendlyFirestoreError(error)}`;
+          li.className = 'is-error';
+        }
+      }
+      const summary = document.createElement('li');
+      summary.className = passed === checks.length ? 'is-ok' : 'is-error';
+      summary.textContent = passed === checks.length
+        ? 'Admin rules appear to be published.'
+        : 'Some checks failed. Publish the rules from firestore.rules (see FIREBASE_SETUP.md).';
+      list.append(summary);
+    }
+    $('rules-check-btn').addEventListener('click', checkRules);
+
+    start();
+  </script>
+</body>
+</html>
