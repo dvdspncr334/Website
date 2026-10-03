@@ -37,7 +37,7 @@ python -m http.server 8000
 1. Push these changes to your main branch
 2. Your site at `https://dvdspncr334.github.io` will automatically use the new login
 
-Fire base is already aware of this domain (you added it in Firebase Console), so login should work immediately.
+Firebase is already aware of this domain (you added it in Firebase Console), so login should work immediately.
 
 ### 4. Test on Live Site
 
@@ -47,80 +47,70 @@ Visit `https://dvdspncr334.github.io/login.html` and:
 - ✅ Sign out
 - ✅ Sign in with that account
 - ✅ Try Google sign-in
-- ✅ Verify the cart badge still works
+- ✅ Verify the cart badge still works (see the cart switching checks below)
 
 ## How It Works
 
-### Frontend
+- `firebase-config.js`: public Firebase web configuration. It's safe to keep in Git, and no client secrets or service-account keys are needed.
+- `auth-firebase.js`: loads the Firebase Auth SDK (CDN version 10.7.0). It exports `app`, `auth`, `onUserChanged()`, `getSession()`, `signInWithGoogle()`, `signInWithEmail()`, `createAccountWithEmail()`, `resetPassword()` and `signOut()`.
+- `login.html`: Sign In / Create Account tabs, Google sign-in, "Forgot password?", and a signed-in account view.
+- Cart files (see below): `cart-store.js`, `cart-firebase.js`, `cart-service.js`, `mini-cart.js`, plus `firestore.rules`.
 
-- `login.html` — UI with three tabs: Sign In, Create Account, and Google Sign-In
-- `auth-firebase.js` — JavaScript module that imports Firebase SDK from Google's CDN and provides `getSession()`, `signInWithGoogle()`, `signInWithEmail()`, `createAccountWithEmail()`, and `signOut()` functions
-- `firebase-config.js` — Public Firebase configuration (safe to keep in Git)
+## Carts: guest vs. account (strictly separate)
 
-### Backend
+| Who is browsing | Cart that is shown | Where it is stored |
+| --- | --- | --- |
+| Signed out | The **guest cart** for this browser | `localStorage` key `jgv3d_cart_guest` |
+| Signed in as A | **Only A's** cart | Firestore `users/{A's uid}/carts/current` |
+| Signed in as B | **Only B's** cart | Firestore `users/{B's uid}/carts/current` |
 
-Firebase handles everything:
-- User registration and login
-- Password hashing and security
-- Session management
-- OAuth flow for Google sign-in
+- Nothing is ever copied, merged, or transferred between these carts. Signing in hides the guest cart and loads only that account's cart. An account with no saved cart shows an **empty** cart, even if the guest cart has items. Signing out shows the untouched guest cart again.
+- The cart and badge are cleared as soon as the signed-in user changes. Cart buttons and checkout stay disabled until the new cart has loaded. Late responses that belong to a previous user are ignored.
+- Account carts update live across tabs and devices through a Firestore listener. Every change runs as a Firestore transaction that only touches the affected item, so two devices editing at once don't overwrite each other.
+- There is no offline queue for account carts. If the connection drops or a save fails, the cart page says so and shows a **Retry** button; it never claims the change was saved. Account carts are not stored in the browser between visits (no persistent Firestore cache), which matters on shared computers.
+- Cart prices and images are only for display. They aren't trusted payment amounts.
+- The Firebase SDK loads from the CDN, so if gstatic.com is unreachable the cart (guest carts included) shows an error with Retry instead of possibly showing the wrong cart.
+- **Old carts:** carts saved before this change under the unowned key `jgv3d_cart` (with `jgv3d_cart_selection`) are moved **once into the guest cart only** and never into any account. Those old carts had no owner, so on a shared browser the moved guest cart may contain items added by anyone who used that browser before.
 
-No server to manage, no environment variables needed.
+## Orders are still browser-local demo data
 
-## Important Notes
+Checkout still creates **local demo orders** in this browser's `localStorage` (`jgv3d_orders`). Orders are **not** linked to your Firebase account, not synced between devices, and not private from other people using the same browser. This change doesn't move orders to Firestore. If saving the demo order fails, the cart is left as it was.
 
-### Security
+## Remaining Firebase Console / deployment steps (required for account carts)
 
-- **Public values:** Your API Key and Project ID are public and cannot be used alone to access user data
-- **User data:** Firebase stores user accounts and enforces authentication
-- **Sessions:** Managed by Firebase—no tokens stored in `localStorage`
-- **HTTPS:** Firebase requires HTTPS in production (GitHub Pages is HTTPS by default)
+This pull request **does not** create your database or publish rules. Until you finish these steps, signed-in carts will show a load error (guest carts still work).
 
-### Cart & Orders
+1. **Create the Firestore database** (skip this if it already exists): Firebase Console → project `jgv3d-fc043` → **Build → Firestore Database → Create database**.
+   - Pick the **Standard** edition / `(default)` database if you're asked.
+   - Pick a **location close to most of your customers** (for example `us-central1`/`nam5` for the US, or `eur3`/`europe-west` for Europe). **The location can't be changed later.**
+   - Start in **production mode**. Do **not** pick test mode, which leaves the database open to everyone.
+2. **Publish the security rules** from `firestore.rules` in this repo:
+   - **Console:** Firestore Database → **Rules**. If the editor already has rules for other collections, **keep them**, and paste only the `match /users/{uid}/carts/{cartId} { ... }` block plus the helper functions inside your existing `match /databases/{database}/documents { ... }`. Then click **Publish**.
+   - **or CLI:** `npm install`, then `npx firebase login` and `npx firebase deploy --only firestore:rules --project jgv3d-fc043`. ⚠️ This **replaces** all published rules with `firestore.rules`, so merge any existing rules into that file first.
+   - The rules allow reading or writing a cart only by the signed-in user whose uid matches `{uid}`. They check the cart's shape (at most 50 lines, quantity 1–99, limited text and price sizes) and deny everyone else.
+3. **Indexes:** none are needed. The cart is read as a single document.
+4. **Authorized domains:** make sure your live domain(s) are listed under Authentication → Settings → Authorized domains (`dvdspncr334.github.io` and any custom domain from `CNAME`).
+5. **Test on the live site** (open the browser console with F12 to check for errors):
+   1. Signed out: add an item. It appears in the cart and the badge.
+   2. Sign in as account A. The cart should be **empty** for a new account (the guest item must **not** appear). Add a different item.
+   3. Sign out. Only the original guest item is shown.
+   4. Sign in as account B. B's cart is empty, and neither A's nor the guest item appears. Sign out again; the guest cart is unchanged.
+   5. Sign in as A on a second device or browser. A's item appears, and changes made on one device show up on the other within a few seconds.
+   6. Go offline (DevTools → Network → Offline) while signed in and change the quantity. You should see an error or offline message with Retry, not "saved".
+   7. In Firestore → Data, confirm that `users/<uid>/carts/current` exists only for accounts that added items.
 
-- Logging in does **not** encrypt or protect your cart (`jgv3d_cart` in `localStorage`)
-- Orders remain local browser data until you move them to a database
-- To sync cart/orders across devices, store them in Firestore (Firebase's database)
+## Developer checks
 
-### Limitations
-
-- Email verification is optional (users can sign up without verifying their email)
-- Password reset via email is not yet implemented
-- User profile data (name, photo) is only available after Google sign-in
-
-To add these features, check Firebase Console under **Authentication → Settings**.
-
-## Customization
-
-### Add Email Verification
-
-In Firebase Console:
-1. Go to **Authentication → Templates**
-2. Customize the email verification template
-3. In `auth-firebase.js`, after `createUserWithEmailAndPassword()`, add:
-```javascript
-await user.sendEmailVerification();
+```bash
+npm install
+npm test            # unit tests (cart store, page wiring, auth module)
+npm run test:rules  # Firestore emulator rules tests (needs Java 11+; downloads the emulator)
 ```
 
-### Add Password Reset
+## Limitations
 
-In Firebase Console:
-1. Go to **Authentication → Templates**
-2. Customize the password reset template
-
-In `login.html`, add a "Forgot Password" link that calls:
-```javascript
-const { sendPasswordResetEmail } = await import('...');
-await sendPasswordResetEmail(auth, email);
-```
-
-### Store Orders in Firestore
-
-To sync orders across devices:
-1. Enable Firestore in Firebase Console
-2. Add code to save/load orders from Firestore instead of `localStorage`
-
-This requires more work but keeps order data secure and synced.
+- Email verification is optional (users can sign up without verifying their email).
+- User profile data (name, photo) is only available after Google sign-in.
 
 ## Troubleshooting
 
@@ -141,18 +131,11 @@ This requires more work but keeps order data secure and synced.
 - Check that email/password authentication is enabled in Firebase
 - Check browser console for error messages
 
-## Next: Protecting Order Data
+### Signed-in cart shows "couldn't load" / permission error
 
-The current setup lets users create accounts and sign in, but **orders remain public and local**. To make orders private and synced:
-
-1. **Option A (Simple):** Don't change anything—orders are demo data
-2. **Option B (Better):** Add code to save orders to Firestore when logged in, and load them on sign-in
-3. **Option C (Advanced):** Build a backend API to validate orders and enforce ownership
-
-For now, Option A is fine—your site is ready to let users create accounts!
+- Check that the Firestore database exists (step 1) and that the rules from `firestore.rules` are published (step 2).
+- Check the browser console for `permission-denied` (rules) or `unavailable` (network) errors.
 
 ## Support
 
-For Firebase documentation, visit [firebase.google.com/docs/auth](https://firebase.google.com/docs/auth).
-
-For issues, check [Firebase Console](https://console.firebase.google.com/) → your project → **Logs** or **Authentication**.
+For Firebase documentation, visit [firebase.google.com/docs](https://firebase.google.com/docs).

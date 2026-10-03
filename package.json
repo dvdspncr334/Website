@@ -1,0 +1,14 @@
+{
+  "name": "jgv3d-website",
+  "private": true,
+  "description": "Static JGV3D site. These dev dependencies are only for tests; the site itself loads Firebase from the CDN.",
+  "scripts": {
+    "test": "node --experimental-vm-modules --test test/*.test.js test/*.test.mjs",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-jgv3d \"node --test test/firestore-rules.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "3.0.4",
+    "firebase": "10.14.1",
+    "firebase-tools": "13.35.1"
+  }
+}

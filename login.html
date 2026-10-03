@@ -143,6 +143,8 @@
     }
     .profile-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
 
+    .auth-cart-note { color: #999; font-size: 0.82em; line-height: 1.45; text-align: center; margin: 16px 0 0; }
+
     .auth-footer { text-align: center; color: #999; font-size: 0.85em; margin-top: 24px; }
     .auth-footer a { color: #e67e22; }
 
@@ -221,6 +223,7 @@
         </svg>
         Continue with Google
       </button>
+      <p class="auth-cart-note">Signing in shows your account's own saved cart. Items in this browser's guest cart stay here and are not moved into your account.</p>
     </section>
 
     <!-- Signed-in view -->
@@ -229,6 +232,7 @@
       <p class="profile-name" id="profile-name"></p>
       <p class="profile-email" id="profile-email"></p>
       <span class="provider-badge" id="provider-badge"></span>
+      <p class="auth-cart-note">You're seeing this account's own cart. This browser's guest cart is kept separately and comes back when you sign out.</p>
 
       <div class="auth-message" id="profile-message" role="alert"></div>
 
@@ -390,15 +394,7 @@
         showMessage($('profile-message'), friendlyError(error), 'error');
       }
     });
-
-    // Mini cart badge
-    try {
-      const cart = JSON.parse(localStorage.getItem('jgv3d_cart')) || [];
-      const total = cart.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-      const badge = $('mini-cart-count');
-      badge.textContent = total;
-      badge.style.display = total > 0 ? 'flex' : 'none';
-    } catch (e) {}
   </script>
+  <script type="module" src="mini-cart.js"></script>
 </body>
 </html>

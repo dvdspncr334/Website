@@ -63,12 +63,12 @@
 
   <script>
     /* ---------- State and Constants ---------- */
-    const CART_KEY = 'jgv3d_cart';
     const CATEGORY_KEY = 'jgv3d_last_category';
     const SUBCATEGORY_KEY = 'jgv3d_last_subcategory';
     const DRAFT_CUSTOM_NOTES_KEY = 'jgv3d_custom_note_drafts';
     const PRODUCT_OPTIONS_KEY = 'jgv3d_shop_selected_options';
     const CUSTOM_NOTE_MAX_LENGTH = 160;
+    const MAX_CART_QTY = 99;
     
     let allProducts = [];
     let currentCategory = localStorage.getItem(CATEGORY_KEY) || 'all';
@@ -76,6 +76,49 @@
     let currentSort = 'default';
     let searchQuery = '';
     let toastTimeout;
+
+    // Shared cart service (guest cart or the signed-in account's cart).
+    // Custom-note drafts and option choices are kept per cart scope: guest
+    // values stay in this browser's storage, signed-in values live only in
+    // memory on this page, so nothing typed as a guest flows into an account.
+    let cartStore = null;
+    let cartState = null;
+    let cartScopeKey = 'pending';
+    let scopedPrefs = { drafts: {}, options: {} };
+    const isGuestScope = () => cartScopeKey === 'guest';
+
+    import('./cart-service.js').then(({ cart }) => {
+      cartStore = cart;
+      cart.subscribe(onCartStateChange);
+    }).catch(error => {
+      console.error('Cart failed to load:', error);
+      showToast('The cart is unavailable right now. Please reload the page.');
+    });
+
+    function onCartStateChange(state) {
+      cartState = state;
+      if (state.scopeKey !== cartScopeKey) {
+        cartScopeKey = state.scopeKey;
+        scopedPrefs = { drafts: {}, options: {} };
+        if (allProducts.length) renderProducts();
+      }
+      applyCartAvailability();
+    }
+
+    function applyCartAvailability() {
+      const ready = Boolean(cartState && cartState.canMutate);
+      let hint = '';
+      if (!ready) {
+        if (!cartState || cartState.status === 'loading') hint = 'Your cart is loading…';
+        else if (cartState.status === 'offline') hint = 'You\'re offline. Account cart changes are paused.';
+        else hint = (cartState.error && cartState.error.message) || 'Your cart is unavailable right now.';
+      }
+      document.querySelectorAll('.add-btn').forEach(btn => {
+        if (btn.dataset.busy === '1') return;
+        btn.disabled = !ready;
+        btn.title = hint;
+      });
+    }
 
     const productsContainer = document.getElementById('products-container');
     const categoriesContainer = document.getElementById('categories-container');
@@ -130,6 +173,7 @@
     }
 
     function getDraftNotes() {
+      if (!isGuestScope()) return scopedPrefs.drafts;
       try {
         return JSON.parse(localStorage.getItem(DRAFT_CUSTOM_NOTES_KEY)) || {};
       } catch (e) {
@@ -138,7 +182,13 @@
     }
 
     function saveDraftNotes(drafts) {
-      localStorage.setItem(DRAFT_CUSTOM_NOTES_KEY, JSON.stringify(drafts));
+      if (!isGuestScope()) {
+        scopedPrefs.drafts = drafts;
+        return;
+      }
+      try {
+        localStorage.setItem(DRAFT_CUSTOM_NOTES_KEY, JSON.stringify(drafts));
+      } catch (e) {}
     }
 
     function getDraftNote(itemId) {
@@ -160,6 +210,7 @@
 
     /* ---------- Product Option Selection Persistence ---------- */
     function getSavedProductOptions() {
+      if (!isGuestScope()) return scopedPrefs.options;
       try {
         return JSON.parse(localStorage.getItem(PRODUCT_OPTIONS_KEY)) || {};
       } catch (e) {
@@ -178,6 +229,10 @@
       const itemOptions = allOptions[itemKey] || {};
       itemOptions[key] = value;
       allOptions[itemKey] = itemOptions;
+      if (!isGuestScope()) {
+        scopedPrefs.options = allOptions;
+        return;
+      }
       try {
         localStorage.setItem(PRODUCT_OPTIONS_KEY, JSON.stringify(allOptions));
       } catch (e) {}
@@ -416,7 +471,7 @@
         });
         plus.addEventListener('click', () => {
           const current = parseInt(display.textContent || '1', 10);
-          display.textContent = current + 1;
+          display.textContent = Math.min(MAX_CART_QTY, current + 1);
         });
       }
 
@@ -678,21 +733,10 @@
         const card = createProductCard(item);
         productsContainer.appendChild(card);
       });
+      applyCartAvailability();
     }
 
     /* ---------- Cart Functions ---------- */
-    function loadCart() {
-      try {
-        return JSON.parse(localStorage.getItem(CART_KEY)) || [];
-      } catch (e) {
-        return [];
-      }
-    }
-
-    function saveCart(cart) {
-      localStorage.setItem(CART_KEY, JSON.stringify(cart));
-    }
-
     function showToast(message) {
       const toast = document.getElementById('toast');
       if (!toast) return;
@@ -729,7 +773,7 @@
       return options;
     }
 
-    function addToCart(card, item) {
+    async function addToCart(card, item) {
       const id = item.id;
       const baseTitle = item.title || 'Item';
       const basePrice = parseFloat(item.price || 0);
@@ -775,18 +819,32 @@
       // Create unique cart ID with options
       const cartId = id + optionsStr;
 
-      const cart = loadCart();
-      const existing = cart.find(item => item.id === cartId);
-      if (existing) {
-        existing.qty += qty;
-        existing.img = img;
-      } else {
-        cart.push({ id: cartId, title, price, img, qty });
+      if (!cartStore || !cartState || !cartState.canMutate) {
+        showToast(cartState && cartState.status === 'offline'
+          ? 'You\'re offline. Account cart changes are paused until you reconnect.'
+          : 'Your cart is still loading. Please try again in a moment.');
+        return;
       }
-      saveCart(cart);
-      updateMiniCart();
 
-      // Reset qty to 1 and show toast
+      const addBtn = card.querySelector('.add-btn');
+      const scopeAtClick = cartState.scope;
+      let added;
+      if (addBtn) {
+        addBtn.dataset.busy = '1';
+        addBtn.disabled = true;
+      }
+      if (scopeAtClick === 'account') showToast('Saving to your account cart…');
+      try {
+        added = await cartStore.addItem({ id: cartId, title, price, img, qty });
+      } catch (error) {
+        showToast((error && error.message) || 'Couldn\'t add this item to your cart. Please try again.');
+        return;
+      } finally {
+        if (addBtn) delete addBtn.dataset.busy;
+        applyCartAvailability();
+      }
+
+      // Reset qty to 1 and show toast (only after the cart change was saved)
       const qtyEl = card.querySelector('.qty-value');
       if (qtyEl) qtyEl.textContent = '1';
       if (isCustomColor && customColorNote) {
@@ -798,7 +856,10 @@
           customColorCounter.textContent = `0/${CUSTOM_NOTE_MAX_LENGTH}`;
         }
       }
-      showToast(`${qty} × ${title} added to cart`);
+      const where = scopeAtClick === 'account' ? 'your account cart' : 'your cart';
+      showToast(added && added.clamped
+        ? `${title}: quantity limited to ${MAX_CART_QTY} in ${where}`
+        : `${qty} × ${title} added to ${where}`);
     }
 
     /* ---------- Event Listeners ---------- */
@@ -813,18 +874,8 @@
     sortSelect.addEventListener('change', applySort);
 
     /* ---------- Initialize ---------- */
-    function updateMiniCart() {
-      const cart = loadCart();
-      const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
-      const miniCartCount = document.getElementById('mini-cart-count');
-      if (miniCartCount) {
-        miniCartCount.textContent = totalItems;
-        miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
-      }
-    }
-
     loadProducts();
-    updateMiniCart();
   </script>
+  <script type="module" src="mini-cart.js"></script>
 </body>
 </html>

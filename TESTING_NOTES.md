@@ -84,3 +84,22 @@
 - Related items prioritize same subcategory, then same category
 - Mini-cart count updates immediately after adding items
 - Stratocaster HSS listings still awaiting real uploaded body images: `strat-hss-cannacaster`, `strat-hss-floweroflife`, `strat-hss-spiralgyroid`, `strat-hss-cts`, `strat-hss-bubbles`, `strat-hss-voronoi`. Their repo folders/assets do not exist yet, so they currently use `images/placeholder.png` until those pattern images are added under their respective `images/Stratocaster/.../HSS/` folders.
+
+## Guest / Account Cart Isolation
+
+### Automated (`npm test`): passing
+- `test/cart-store.test.mjs`: guest → A → guest → B → guest, a new empty account, same-account refresh, one-time legacy `jgv3d_cart` → guest migration (never into an account), stale snapshots and writes after an account switch, multi-tab guest updates, two-device concurrent changes, load/save/storage failures with Retry, offline (cache-only) snapshots, item/variant identity, size and quantity limits, and scoped selection.
+- `test/cart-pages.test.mjs`: no page reads the old shared `jgv3d_cart` key, every header badge uses `mini-cart.js`, and checkout saves the demo order before removing cart items.
+- `test/auth-firebase.test.js`: auth module API (it never touches cart or order storage).
+
+### Not executed in the development sandbox
+- `npm run test:rules` (`test/firestore-rules.test.mjs`, Firestore emulator): the emulator download was blocked in the sandbox, so the rules have **not** been run against the emulator yet. Run this locally (Java 11+) before publishing the rules.
+- Real Firebase sign-in and Firestore sync on the live site, because the Firebase CDN was unreachable in the sandbox. Follow the checks in FIREBASE_SETUP.md → "Remaining Firebase Console / deployment steps".
+
+### Manual browser walkthrough (local server, fake in-memory backend in place of `cart-firebase.js`)
+- PASS: an old `jgv3d_cart` cart showed up as the guest cart (badge 2). A guest add from the shop updated the badge.
+- PASS: signing in as A cleared the cart right away ("Loading your account cart…") and then showed an empty account cart. An item added as A appeared only in A's cart.
+- PASS: a simulated network failure showed an error with Retry and left the quantity unchanged; Retry then saved the change.
+- PASS: signing out brought back the unchanged guest cart. Signing in as B showed an empty cart.
+- PASS: guest checkout created a local demo order and then emptied the guest cart.
+- Note (pre-existing, unrelated): the first shop card renders with an empty product id, so its "Add to Cart" does nothing. This also happens with the shop page from before this change.

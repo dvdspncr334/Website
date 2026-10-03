@@ -25,6 +25,10 @@
   <!-- Cart Content -->
   <div class="cart-container">
     <h2>Your Cart</h2>
+    <div id="cart-status" class="cart-status" role="status" aria-live="polite" hidden>
+      <span id="cart-status-text"></span>
+      <button type="button" class="cart-status-retry" id="cart-retry-btn" hidden>Retry</button>
+    </div>
     <div id="cart-summary"></div>
     <div id="cart-selection-controls" class="cart-selection-controls">
       <label for="select-all-checkbox">
@@ -38,14 +42,18 @@
     <div id="cart-total" style="margin-top:16px; font-size:1.1em; color:#ff9800;"></div>
 
     <button type="button" class="checkout-btn" id="checkout-btn">Proceed to Checkout</button>
+    <p class="cart-demo-note" id="cart-demo-note">Checkout creates a demo order that is saved only in this browser. Orders are not linked to your account.</p>
   </div>
 
   <script src="order-utils.js"></script>
-  <script>
-    const CART_KEY = 'jgv3d_cart';
-    const ORDERS_KEY = 'jgv3d_orders';
-    const CART_SELECTION_KEY = 'jgv3d_cart_selection';
+  <script type="module">
+    import { cart } from './cart-service.js';
 
+    const ORDERS_KEY = 'jgv3d_orders';
+
+    const cartStatusEl = document.getElementById('cart-status');
+    const cartStatusTextEl = document.getElementById('cart-status-text');
+    const cartRetryBtn = document.getElementById('cart-retry-btn');
     const cartItemsEl = document.getElementById('cart-items');
     const cartSummaryEl = document.getElementById('cart-summary');
     const cartSelectionControlsEl = document.getElementById('cart-selection-controls');
@@ -54,17 +62,9 @@
     const cartTotalEl = document.getElementById('cart-total');
     const checkoutBtn = document.getElementById('checkout-btn');
 
-    function loadCart() {
-      try {
-        return JSON.parse(localStorage.getItem(CART_KEY)) || [];
-      } catch (e) {
-        return [];
-      }
-    }
-
-    function saveCart(cart) {
-      localStorage.setItem(CART_KEY, JSON.stringify(cart));
-    }
+    let cartState = cart.getState();
+    let checkoutInProgress = false;
+    let actionMessage = '';
 
     function loadOrders() {
       try {
@@ -76,19 +76,6 @@
 
     function saveOrders(orders) {
       localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
-    }
-
-    function loadCartSelection() {
-      try {
-        const parsed = JSON.parse(localStorage.getItem(CART_SELECTION_KEY));
-        return Array.isArray(parsed) ? parsed.map(id => String(id)) : null;
-      } catch (e) {
-        return null;
-      }
-    }
-
-    function saveCartSelection(selectionIds) {
-      localStorage.setItem(CART_SELECTION_KEY, JSON.stringify(selectionIds));
     }
 
     function formatPrice(num) {
@@ -121,17 +108,39 @@
       };
     }
 
-    function normalizeCartItem(item) {
-      const normalized = item || {};
-      normalized.img = normalized.img || 'images/placeholder.png';
-      normalized.title = normalized.title || 'Item';
-      normalized.qty = Number(normalized.qty) > 0 ? Number(normalized.qty) : 1;
-      normalized.price = Number(normalized.price) || 0;
-      return normalized;
+    function renderStatus(state) {
+      let text = '';
+      let tone = '';
+      if (state.status === 'loading') {
+        text = state.scope === 'account' ? 'Loading your account cart…' : 'Loading your cart…';
+      } else if (state.status === 'offline') {
+        text = state.hasData
+          ? 'You\'re offline. Showing your account cart as last loaded; changes are paused until you reconnect.'
+          : 'You\'re offline. Your account cart will load when the connection returns.';
+      } else if (state.error) {
+        text = state.error.message;
+        tone = 'is-error';
+      } else if (state.saving) {
+        text = 'Saving changes to your account cart…';
+      } else if (state.scope === 'account') {
+        text = 'Signed in: this is your account cart. All changes are saved to your account.';
+        tone = 'is-saved';
+      } else if (state.scope === 'guest') {
+        text = 'Guest cart: saved in this browser only. Signing in shows your account\'s own cart instead.';
+      }
+      if (state.notice) text = text ? `${text} ${state.notice}` : state.notice;
+      if (actionMessage) {
+        text = actionMessage;
+        tone = 'is-error';
+      }
+      cartStatusEl.hidden = !text;
+      cartStatusEl.className = `cart-status ${tone}`.trim();
+      cartStatusTextEl.textContent = text;
+      cartRetryBtn.hidden = !(state.canRetry && state.error && !actionMessage);
     }
 
-    function renderCartSummary(cart) {
-      const customOrderCount = cart.reduce((count, item) => {
+    function renderCartSummary(items) {
+      const customOrderCount = items.reduce((count, item) => {
         const parsed = parseCartTitle(item.title || 'Item');
         return count + (parsed.isCustomOrder ? item.qty : 0);
       }, 0);
@@ -144,44 +153,66 @@
       }
     }
 
-    function getSelectionForCart(cart) {
-      const cartIds = cart.map(item => String(item.id));
-      const storedSelection = loadCartSelection();
-      const selectedIds = storedSelection === null
-        ? cartIds
-        : cartIds.filter(id => storedSelection.includes(id));
-      saveCartSelection(selectedIds);
-      return new Set(selectedIds);
+    // Keeps the existing behaviour: the stored selection is pruned to items
+    // that are still in the cart each time the cart is shown.
+    function getSelectionForCart() {
+      const selectedIds = cart.getSelection();
+      if (cartState.canMutate) cart.setSelection(selectedIds);
+      return selectedIds;
     }
 
-    function updateSelectAllState(cart, selectedIds) {
-      const allSelected = cart.length > 0 && cart.every(item => selectedIds.has(String(item.id)));
-      const anySelected = cart.some(item => selectedIds.has(String(item.id)));
+    function updateSelectAllState(items, selectedIds) {
+      const allSelected = items.length > 0 && items.every(item => selectedIds.has(String(item.id)));
+      const anySelected = items.some(item => selectedIds.has(String(item.id)));
       selectAllCheckbox.checked = allSelected;
       selectAllCheckbox.indeterminate = anySelected && !allSelected;
     }
 
     function updateCheckoutState(selectedCount) {
-      const hasSelectedItems = selectedCount > 0;
-      checkoutBtn.classList.toggle('is-disabled', !hasSelectedItems);
-      checkoutBtn.setAttribute('aria-disabled', hasSelectedItems ? 'false' : 'true');
-      checkoutBtn.disabled = !hasSelectedItems;
-      if (hasSelectedItems) {
+      const canCheckout = selectedCount > 0 && cartState.canMutate && !cartState.saving && !checkoutInProgress;
+      checkoutBtn.classList.toggle('is-disabled', !canCheckout);
+      checkoutBtn.setAttribute('aria-disabled', canCheckout ? 'false' : 'true');
+      checkoutBtn.disabled = !canCheckout;
+      if (selectedCount > 0) {
         cartSelectionMessageEl.textContent = '';
       }
     }
 
+    async function runCartAction(action) {
+      actionMessage = '';
+      try {
+        await action();
+      } catch (error) {
+        // Save failures also show in the status bar (with Retry) via the store.
+        if (error && (error.code === 'cart-full' || error.code === 'invalid-item' || error.code === 'not-ready' || error.code === 'offline' || error.code === 'stale-scope')) {
+          actionMessage = error.message;
+          renderCart();
+        }
+      }
+    }
+
     function renderCart() {
-      const cart = loadCart().map(item => normalizeCartItem(item));
+      const state = cartState;
+      renderStatus(state);
+      const items = state.items.slice();
+      const canEdit = state.canMutate && !checkoutInProgress;
 
       // Sort alphabetically by title
-      cart.sort((a, b) => (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase()));
+      items.sort((a, b) => (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase()));
 
       cartItemsEl.innerHTML = '';
       cartSummaryEl.innerHTML = '';
       cartSelectionMessageEl.textContent = '';
 
-      if (cart.length === 0) {
+      if (!state.hasData) {
+        // Never show "empty" while the cart for this sign-in state isn't loaded.
+        cartTotalEl.textContent = '';
+        cartSelectionControlsEl.style.display = 'none';
+        checkoutBtn.style.display = 'none';
+        return;
+      }
+
+      if (items.length === 0) {
         cartItemsEl.innerHTML = `<p style="text-align:center; color:#ddd; margin:10px 0;">Your cart is empty.</p>`;
         cartTotalEl.textContent = '';
         cartSelectionControlsEl.style.display = 'none';
@@ -192,14 +223,15 @@
         checkoutBtn.style.display = 'block';
       }
 
-      renderCartSummary(cart);
-      const selectedIds = getSelectionForCart(cart);
-      updateSelectAllState(cart, selectedIds);
+      renderCartSummary(items);
+      const selectedIds = getSelectionForCart();
+      updateSelectAllState(items, selectedIds);
+      selectAllCheckbox.disabled = !canEdit;
 
       let selectedTotal = 0;
       let selectedItemCount = 0;
 
-      cart.forEach((item, itemIndex) => {
+      items.forEach((item, itemIndex) => {
         const subtotal = item.price * item.qty;
         const itemId = String(item.id);
         const isSelected = selectedIds.has(itemId);
@@ -213,13 +245,14 @@
         const itemImage = item.img && item.img.trim() ? item.img : 'images/placeholder.png';
         const safeItemImage = escapeHTML(itemImage);
         const titleId = `cart-item-title-${itemIndex}`;
+        const disabledAttr = canEdit ? '' : 'disabled';
 
         const wrapper = document.createElement('div');
         wrapper.className = 'cart-item';
 
         wrapper.innerHTML = `
           <div class="cart-item-select">
-            <input type="checkbox" class="cart-item-checkbox" ${isSelected ? 'checked' : ''} aria-labelledby="${titleId}">
+            <input type="checkbox" class="cart-item-checkbox" ${isSelected ? 'checked' : ''} ${disabledAttr} aria-labelledby="${titleId}">
           </div>
           <img src="${safeItemImage}" alt="${safeBaseTitle}" onerror="this.src='images/placeholder.png'">
           <div class="cart-item-details">
@@ -229,63 +262,40 @@
             </div>
             ${safeCustomNote ? `<p class="cart-item-note"><strong>Custom Color / Notes:</strong> ${safeCustomNote}</p>` : ''}
             <div class="qty-control" style="justify-content:flex-start; gap:8px; margin-top:6px;">
-              <button class="qty-btn minus" aria-label="Decrease quantity">−</button>
+              <button class="qty-btn minus" aria-label="Decrease quantity" ${canEdit && item.qty > 1 ? '' : 'disabled'}>−</button>
               <span class="qty-value">${item.qty}</span>
-              <button class="qty-btn plus" aria-label="Increase quantity">+</button>
+              <button class="qty-btn plus" aria-label="Increase quantity" ${canEdit && item.qty < 99 ? '' : 'disabled'}>+</button>
             </div>
           </div>
           <div class="cart-item-price">${formatPrice(subtotal)}</div>
-          <button class="remove-btn">Remove</button>
+          <button class="remove-btn" ${disabledAttr}>Remove</button>
         `;
 
         const minus = wrapper.querySelector('.qty-btn.minus');
         const plus = wrapper.querySelector('.qty-btn.plus');
-        const qtyEl = wrapper.querySelector('.qty-value');
-        const priceEl = wrapper.querySelector('.cart-item-price');
         const removeBtn = wrapper.querySelector('.remove-btn');
         const itemCheckbox = wrapper.querySelector('.cart-item-checkbox');
 
         itemCheckbox.addEventListener('change', () => {
+          const nextSelection = cart.getSelection();
           if (itemCheckbox.checked) {
-            selectedIds.add(itemId);
+            nextSelection.add(itemId);
           } else {
-            selectedIds.delete(itemId);
+            nextSelection.delete(itemId);
           }
-          saveCartSelection(Array.from(selectedIds));
+          cart.setSelection(nextSelection);
           renderCart();
         });
 
-        minus.addEventListener('click', () => {
-          const cartData = loadCart().map(entry => normalizeCartItem(entry));
-          const entry = cartData.find(x => x.id === item.id);
-          if (!entry) return;
-          entry.qty = Math.max(1, Number(entry.qty) - 1);
-          entry.img = item.img && item.img.trim() ? item.img : entry.img || 'images/placeholder.png';
-          saveCart(cartData);
-          qtyEl.textContent = entry.qty;
-          priceEl.textContent = formatPrice(entry.qty * entry.price);
-          renderCart();
-        });
+        minus.addEventListener('click', () => runCartAction(() => cart.changeQty(item.id, -1)));
+        plus.addEventListener('click', () => runCartAction(() => cart.changeQty(item.id, 1)));
 
-        plus.addEventListener('click', () => {
-          const cartData = loadCart().map(entry => normalizeCartItem(entry));
-          const entry = cartData.find(x => x.id === item.id);
-          if (!entry) return;
-          entry.qty += 1;
-          entry.img = item.img && item.img.trim() ? item.img : entry.img || 'images/placeholder.png';
-          saveCart(cartData);
-          qtyEl.textContent = entry.qty;
-          priceEl.textContent = formatPrice(entry.qty * entry.price);
-          renderCart();
-        });
-
-        removeBtn.addEventListener('click', () => {
-          const cartData = loadCart().filter(x => x.id !== item.id);
-          selectedIds.delete(itemId);
-          saveCartSelection(Array.from(selectedIds));
-          saveCart(cartData);
-          renderCart();
-        });
+        removeBtn.addEventListener('click', () => runCartAction(async () => {
+          await cart.removeItems([item.id]);
+          const nextSelection = cart.getSelection();
+          nextSelection.delete(itemId);
+          cart.setSelection(nextSelection);
+        }));
 
         cartItemsEl.appendChild(wrapper);
       });
@@ -294,13 +304,15 @@
       updateCheckoutState(selectedItemCount);
     }
 
-    // Checkout: move all cart items into a new queued order, clear the cart,
-    // then send the user to the Orders page.
-    checkoutBtn.addEventListener('click', () => {
-      const cart = loadCart().map(item => normalizeCartItem(item));
-      if (cart.length === 0) return;
-      const selectedIds = getSelectionForCart(cart);
-      const selectedItems = cart.filter(item => selectedIds.has(String(item.id)));
+    // Checkout: save the selected items as a demo order in this browser
+    // (not linked to any account), then remove them from the current cart.
+    // If the order can't be saved, the cart is left unchanged.
+    checkoutBtn.addEventListener('click', async () => {
+      if (checkoutInProgress || !cartState.canMutate || cartState.saving) return;
+      const items = cartState.items;
+      if (items.length === 0) return;
+      const selectedIds = getSelectionForCart();
+      const selectedItems = items.filter(item => selectedIds.has(String(item.id)));
       if (selectedItems.length === 0) {
         cartSelectionMessageEl.textContent = 'Select at least one item to checkout.';
         updateCheckoutState(0);
@@ -324,40 +336,46 @@
         total: total
       };
 
-      const orders = loadOrders();
-      orders.push(order);
-      saveOrders(orders);
-      const remainingCartItems = cart.filter(item => !selectedIds.has(String(item.id)));
-      saveCart(remainingCartItems);
-      const remainingSelection = Array.from(selectedIds).filter(id =>
-        remainingCartItems.some(item => String(item.id) === id)
-      );
-      saveCartSelection(remainingSelection);
+      actionMessage = '';
+      try {
+        const orders = loadOrders();
+        orders.push(order);
+        saveOrders(orders);
+      } catch (error) {
+        actionMessage = 'Your demo order couldn\'t be saved in this browser, so nothing was removed from your cart. Please try again.';
+        renderCart();
+        return;
+      }
+
+      checkoutInProgress = true;
+      renderCart();
+      try {
+        await cart.removeItems(selectedItems.map(item => item.id));
+      } catch (error) {
+        checkoutInProgress = false;
+        actionMessage = `Your demo order ${order.id} was saved in this browser, but the items couldn't be removed from your cart (${(error && error.message) || 'unknown error'}). They are still in your cart — remove them manually to avoid ordering twice.`;
+        renderCart();
+        return;
+      }
 
       window.location.href = 'orders.html';
     });
 
     selectAllCheckbox.addEventListener('change', () => {
-      const cart = loadCart().map(item => normalizeCartItem(item));
-      const selectedIds = selectAllCheckbox.checked ? cart.map(item => String(item.id)) : [];
-      saveCartSelection(selectedIds);
+      const ids = selectAllCheckbox.checked ? cartState.items.map(item => String(item.id)) : [];
+      cart.setSelection(ids);
       renderCart();
     });
 
-    // Update mini-cart count
-    function updateMiniCart() {
-      const cart = loadCart().map(item => normalizeCartItem(item));
-      const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
-      const miniCartCount = document.getElementById('mini-cart-count');
-      if (miniCartCount) {
-        miniCartCount.textContent = totalItems;
-        miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
-      }
-    }
+    cartRetryBtn.addEventListener('click', () => {
+      actionMessage = '';
+      cart.retry().catch(() => {});
+    });
 
-    // Initial render
-    renderCart();
-    updateMiniCart();
+    cart.subscribe(state => {
+      cartState = state;
+      renderCart();
+    });
   </script>
 </body>
 </html>
