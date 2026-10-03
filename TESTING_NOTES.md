@@ -109,7 +109,7 @@
 ### Automated (`npm test`): passing
 - `test/shop-csv.test.mjs`: the real `data/shop.csv` parses, validates and round-trips; quoting; validation of ids, prices, pipe lists, paths and markup.
 - `test/admin-auth.test.mjs`: `isAdmin` sessionStorage cache per UID (TTL, force, clear, errors never cached); activity throttling.
-- `test/admin-page.test.mjs`: page gating/redirects, logout/back link, no cart badge, no `innerHTML`/console logging/token storage, orders labelled browser-local.
+- `test/admin-page.test.mjs`: page gating/redirects, logout/back link, no cart badge, no `innerHTML`/console logging/token storage, account orders (Firestore) and labelled local demo orders.
 
 ### Not executed in the development sandbox
 - `npm run test:rules` (new admin / userActivity emulator tests in `test/firestore-rules.test.mjs`): the Firestore emulator download was blocked. Run it locally before publishing the rules.
@@ -118,4 +118,4 @@
 ### Manual browser walkthrough (local server, in-memory stand-ins for the Firebase SDK modules)
 - Signed out → redirected to `login.html`; non-admin → `login.html?admin=denied` with a message.
 - Console-bootstrapped admin → dashboard loads with no cart badge; product add/edit/delete with validation errors; Download CSV produced the expected file.
-- User Activity, Orders (read-only, browser-local notice, markup shown as text), Settings: invalid email / unknown user / already-admin errors, add and remove admin, remove self → access denied; logout clears the admin cache; 390px-wide layout.
+- User Activity, Orders (read-only account orders from Firestore plus labelled local demo orders, markup shown as text), Settings: invalid email / unknown user / already-admin errors, add and remove admin, remove self → access denied; logout clears the admin cache; 390px-wide layout.

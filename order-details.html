@@ -30,39 +30,15 @@
     <div id="order-details-root" class="order-details-root"></div>
   </main>
 
-  <script src="order-utils.js"></script>
-  <script>
-    const ORDERS_KEY = 'jgv3d_orders';
-    const ORDER_STATUSES = ['In Queue', 'In Progress', 'Shipped', 'Completed'];
+  <script type="module">
+    import { loadAccountData, ORDER_STATUSES, formatShippingLines, friendlyAccountError } from './account-data.js';
+
     const STATUS_CLASSES = {
       'In Queue': 'status-queued',
       'In Progress': 'status-in-progress',
       'Shipped': 'status-shipped',
       'Completed': 'status-completed'
     };
-
-    function loadOrders() {
-      try {
-        const parsed = JSON.parse(localStorage.getItem(ORDERS_KEY)) || [];
-        const { orders, didChange } = window.JGV3DOrderUtils.hydrateOrdersWithDetailKeys(parsed);
-        if (didChange) {
-          localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
-        }
-        return orders;
-      } catch (e) {
-        return [];
-      }
-    }
-
-    function normalizeItem(item) {
-      return {
-        id: item && item.id ? item.id : '',
-        title: item && item.title ? item.title : 'Item',
-        img: item && item.img ? item.img : 'images/placeholder.png',
-        qty: Number(item && item.qty) > 0 ? Number(item.qty) : 1,
-        price: Number(item && item.price) || 0
-      };
-    }
 
     function formatPrice(num) {
       return `$${Number(num || 0).toFixed(2)}`;
@@ -108,6 +84,16 @@
       return params.get('id') || '';
     }
 
+    function renderMessage(title, html) {
+      const root = document.getElementById('order-details-root');
+      root.innerHTML = `
+        <section class="order-not-found">
+          <h2>${escapeHTML(title)}</h2>
+          ${html}
+        </section>
+      `;
+    }
+
     function renderNotFound(orderId) {
       const root = document.getElementById('order-details-root');
       root.innerHTML = `
@@ -121,14 +107,14 @@
 
     function renderOrder(order) {
       const root = document.getElementById('order-details-root');
-      const items = Array.isArray(order.items) ? order.items.map(normalizeItem) : [];
+      const items = order.items;
       const status = ORDER_STATUSES.includes(order.status) ? order.status : 'In Queue';
       const statusClass = STATUS_CLASSES[status] || 'status-queued';
       const itemCount = items.reduce((sum, item) => sum + item.qty, 0);
-      const orderTotal = typeof order.total === 'number'
-        ? order.total
-        : items.reduce((sum, item) => sum + item.price * item.qty, 0);
+      const orderTotal = order.total;
       const formattedDate = formatOrderDate(order.date);
+      const shippingLines = formatShippingLines(order.shipping);
+      const deliveryNotes = order.shipping.deliveryNotes;
       const currentIndex = ORDER_STATUSES.indexOf(status);
 
       const progressMarkup = ORDER_STATUSES.map((step, index) => {
@@ -197,6 +183,15 @@
           </section>
 
           <section class="order-detail-section">
+            <h3>Shipping address</h3>
+            ${shippingLines.length
+              ? `<address class="shipping-address">${shippingLines.map(escapeHTML).join('<br>')}</address>`
+              : '<p class="order-item-meta">No shipping address was saved with this order.</p>'}
+            ${deliveryNotes ? `<p class="order-item-meta"><strong>Delivery notes:</strong> ${escapeHTML(deliveryNotes)}</p>` : ''}
+            ${order.notes ? `<p class="order-item-meta"><strong>Order notes:</strong> ${escapeHTML(order.notes)}</p>` : ''}
+          </section>
+
+          <section class="order-detail-section">
             <h3>Items in this order</h3>
             <div class="order-detail-items">${itemsMarkup}</div>
             <div class="order-total-row">Order Total: ${formatPrice(orderTotal)}</div>
@@ -207,37 +202,50 @@
       attachImageFallbacks(root);
     }
 
-    function renderOrderDetails() {
+    let api = null;
+    let epoch = 0;
+
+    async function renderOrderDetails(uid) {
+      const myEpoch = ++epoch;
       const orderId = getOrderReference();
       if (!orderId) {
         renderNotFound('missing order reference');
         return;
       }
-
-      const orders = loadOrders();
-      let order = orders.find(entry => entry && String(entry.detailKey) === orderId);
-      if (!order) {
-        const legacyMatches = orders.filter(entry => entry && String(entry.id) === orderId);
-        if (legacyMatches.length) {
-          order = legacyMatches.slice().sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-        }
-      }
-
-      if (!order) {
-        renderNotFound(orderId);
+      if (!uid) {
+        renderMessage('Sign in to see this order', '<p>Orders are saved to your account. <a href="login.html">Sign in</a> with the account that placed this order.</p>');
         return;
       }
-
-      renderOrder(order);
+      renderMessage('Loading order…', '');
+      try {
+        const order = await api.getOrder(uid, orderId);
+        if (myEpoch !== epoch) return;
+        if (!order) {
+          renderNotFound(orderId);
+          return;
+        }
+        renderOrder(order);
+      } catch (error) {
+        if (myEpoch !== epoch) return;
+        renderMessage('Couldn\'t load this order', `<p>${escapeHTML(friendlyAccountError(error))}</p><p><button type="button" class="cart-status-retry" id="order-retry-btn">Retry</button></p>`);
+        document.getElementById('order-retry-btn').addEventListener('click', () => renderOrderDetails(uid));
+      }
     }
 
-    window.addEventListener('storage', (event) => {
-      if (event.key === ORDERS_KEY) {
-        renderOrderDetails();
+    async function start() {
+      renderMessage('Loading order…', '');
+      try {
+        api = await loadAccountData();
+      } catch (error) {
+        renderMessage('Couldn\'t load this order', '<p>Check your connection and try again.</p><p><button type="button" class="cart-status-retry" id="order-retry-btn">Retry</button></p>');
+        document.getElementById('order-retry-btn').addEventListener('click', start);
+        return;
       }
-    });
+      // Re-render (and drop the previous account's order) on any sign-in change.
+      api.onUserChanged(user => renderOrderDetails(user ? user.id : null));
+    }
 
-    renderOrderDetails();
+    start();
   </script>
   <script type="module" src="mini-cart.js"></script>
   <script type="module" src="auth-navigation.js"></script>

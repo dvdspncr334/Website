@@ -41,16 +41,40 @@
 
     <div id="cart-total" style="margin-top:16px; font-size:1.1em; color:#ff9800;"></div>
 
-    <button type="button" class="checkout-btn" id="checkout-btn">Proceed to Checkout</button>
-    <p class="cart-demo-note" id="cart-demo-note">Checkout creates a demo order that is saved only in this browser. Orders are not linked to your account.</p>
+    <button type="button" class="checkout-btn" id="checkout-btn" aria-describedby="checkout-signin-note">Proceed to Checkout</button>
+    <p class="cart-signin-note" id="checkout-signin-note" hidden>Sign in to place an order. <a href="login.html">Sign in or create an account</a></p>
+    <p class="cart-demo-note" id="cart-demo-note">Orders are saved to your account with your shipping details. Only you and JGV3D can see them. No payment is taken on this site.</p>
   </div>
 
-  <script src="order-utils.js"></script>
+  <dialog id="checkout-dialog" class="shipping-dialog" aria-labelledby="checkout-title" aria-describedby="checkout-intro">
+    <form id="checkout-form" class="shipping-form" novalidate>
+      <h2 id="checkout-title">Shipping details</h2>
+      <p id="checkout-intro" class="shipping-intro">Where should we ship this order? Fields marked * are required.</p>
+      <p id="checkout-order-summary" class="shipping-summary"></p>
+      <div id="checkout-message" class="shipping-message" role="alert" hidden></div>
+      <div id="checkout-loading" class="shipping-loading" hidden><span class="shipping-spinner" aria-hidden="true"></span><span id="checkout-loading-text">Loading…</span></div>
+      <div id="checkout-fields"></div>
+      <div class="shipping-field shipping-field-wide">
+        <label for="checkout-order-notes">Order notes (optional)</label>
+        <textarea id="checkout-order-notes" rows="2" maxlength="1000" aria-describedby="checkout-order-notes-hint"></textarea>
+        <p class="shipping-hint" id="checkout-order-notes-hint">Anything else we should know about this order.</p>
+      </div>
+      <label class="shipping-checkbox" for="checkout-save-address">
+        <input type="checkbox" id="checkout-save-address">
+        Save this address for next time
+      </label>
+      <div class="shipping-actions">
+        <button type="button" class="shipping-btn shipping-btn-outline" id="checkout-cancel">Cancel</button>
+        <button type="submit" class="shipping-btn shipping-btn-primary" id="checkout-submit">Place Order</button>
+      </div>
+    </form>
+  </dialog>
+
   <script type="module" src="auth-navigation.js"></script>
   <script type="module">
     import { cart } from './cart-service.js';
-
-    const ORDERS_KEY = 'jgv3d_orders';
+    import { loadAccountData, buildOrder, validateShipping, friendlyAccountError, ORDER_NOTES_MAX } from './account-data.js';
+    import { createShippingForm } from './shipping-form.js';
 
     const cartStatusEl = document.getElementById('cart-status');
     const cartStatusTextEl = document.getElementById('cart-status-text');
@@ -63,20 +87,31 @@
     const cartTotalEl = document.getElementById('cart-total');
     const checkoutBtn = document.getElementById('checkout-btn');
 
+    const checkoutSigninNote = document.getElementById('checkout-signin-note');
+    const checkoutDialog = document.getElementById('checkout-dialog');
+    const checkoutForm = document.getElementById('checkout-form');
+    const checkoutMessageEl = document.getElementById('checkout-message');
+    const checkoutLoadingEl = document.getElementById('checkout-loading');
+    const checkoutLoadingText = document.getElementById('checkout-loading-text');
+    const checkoutSummaryEl = document.getElementById('checkout-order-summary');
+    const orderNotesEl = document.getElementById('checkout-order-notes');
+    const saveAddressEl = document.getElementById('checkout-save-address');
+    const checkoutCancelBtn = document.getElementById('checkout-cancel');
+    const checkoutSubmitBtn = document.getElementById('checkout-submit');
+    const shippingForm = createShippingForm(document.getElementById('checkout-fields'), { idPrefix: 'checkout' });
+
     let cartState = cart.getState();
     let checkoutInProgress = false;
     let actionMessage = '';
+    // The open checkout: { uid, scopeKey, busy, done }. Replaced (and the
+    // dialog closed) whenever the signed-in account changes.
+    let checkout = null;
 
-    function loadOrders() {
-      try {
-        return JSON.parse(localStorage.getItem(ORDERS_KEY)) || [];
-      } catch (e) {
-        return [];
-      }
-    }
-
-    function saveOrders(orders) {
-      localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+    // Orders can only be placed from a signed-in account cart.
+    function accountUid(state) {
+      return state.scope === 'account' && typeof state.scopeKey === 'string' && state.scopeKey.startsWith('account:')
+        ? state.scopeKey.slice('account:'.length)
+        : null;
     }
 
     function formatPrice(num) {
@@ -170,10 +205,13 @@
     }
 
     function updateCheckoutState(selectedCount) {
-      const canCheckout = selectedCount > 0 && cartState.canMutate && !cartState.saving && !checkoutInProgress;
+      const signedIn = Boolean(accountUid(cartState));
+      const canCheckout = signedIn && selectedCount > 0 && cartState.canMutate && !cartState.saving && !checkoutInProgress;
       checkoutBtn.classList.toggle('is-disabled', !canCheckout);
       checkoutBtn.setAttribute('aria-disabled', canCheckout ? 'false' : 'true');
       checkoutBtn.disabled = !canCheckout;
+      checkoutBtn.title = signedIn ? '' : 'Sign in to place an order';
+      checkoutSigninNote.hidden = signedIn || cartState.scope !== 'guest';
       if (selectedCount > 0) {
         cartSelectionMessageEl.textContent = '';
       }
@@ -210,6 +248,7 @@
         cartTotalEl.textContent = '';
         cartSelectionControlsEl.style.display = 'none';
         checkoutBtn.style.display = 'none';
+        checkoutSigninNote.hidden = true;
         return;
       }
 
@@ -218,6 +257,7 @@
         cartTotalEl.textContent = '';
         cartSelectionControlsEl.style.display = 'none';
         checkoutBtn.style.display = 'none';
+        checkoutSigninNote.hidden = true;
         return;
       } else {
         cartSelectionControlsEl.style.display = 'flex';
@@ -305,61 +345,209 @@
       updateCheckoutState(selectedItemCount);
     }
 
-    // Checkout: save the selected items as a demo order in this browser
-    // (not linked to any account), then remove them from the current cart.
-    // If the order can't be saved, the cart is left unchanged.
-    checkoutBtn.addEventListener('click', async () => {
-      if (checkoutInProgress || !cartState.canMutate || cartState.saving) return;
-      const items = cartState.items;
-      if (items.length === 0) return;
+    function selectedCartItems() {
       const selectedIds = getSelectionForCart();
-      const selectedItems = items.filter(item => selectedIds.has(String(item.id)));
-      if (selectedItems.length === 0) {
+      return cartState.items.filter(item => selectedIds.has(String(item.id)));
+    }
+
+    function setCheckoutMessage(text, tone = 'error') {
+      checkoutMessageEl.hidden = !text;
+      checkoutMessageEl.className = `shipping-message${text ? ` is-${tone}` : ''}`;
+      checkoutMessageEl.textContent = text || '';
+    }
+
+    function setCheckoutLoading(text) {
+      checkoutLoadingEl.hidden = !text;
+      checkoutLoadingText.textContent = text || '';
+      const disabled = Boolean(text);
+      shippingForm.setDisabled(disabled);
+      orderNotesEl.disabled = disabled;
+      saveAddressEl.disabled = disabled;
+      checkoutSubmitBtn.disabled = disabled;
+      checkoutCancelBtn.disabled = disabled && Boolean(checkout && checkout.busy);
+      checkoutForm.setAttribute('aria-busy', disabled ? 'true' : 'false');
+    }
+
+    function updateCheckoutSummary() {
+      if (!checkout || checkout.done) return;
+      const items = selectedCartItems();
+      const count = items.reduce((sum, item) => sum + item.qty, 0);
+      const total = items.reduce((sum, item) => sum + item.price * item.qty, 0);
+      checkoutSummaryEl.textContent = `${count} ${count === 1 ? 'item' : 'items'} • Total ${formatPrice(total)}`;
+    }
+
+    // Never leave a previous buyer's address in the page.
+    function resetCheckoutForm() {
+      shippingForm.clear();
+      orderNotesEl.value = '';
+      saveAddressEl.checked = false;
+      setCheckoutMessage('');
+      setCheckoutLoading('');
+      checkoutCancelBtn.hidden = false;
+      checkoutCancelBtn.disabled = false;
+      checkoutSubmitBtn.textContent = 'Place Order';
+    }
+
+    function closeCheckout() {
+      if (checkoutDialog.open) checkoutDialog.close();
+    }
+
+    async function openCheckout() {
+      const uid = accountUid(cartState);
+      if (!uid) {
+        checkoutSigninNote.hidden = false;
+        return;
+      }
+      const session = { uid, scopeKey: cartState.scopeKey, busy: false, done: false };
+      checkout = session;
+      resetCheckoutForm();
+      updateCheckoutSummary();
+      checkoutDialog.showModal();
+      setCheckoutLoading('Loading your saved address…');
+      try {
+        const api = await loadAccountData();
+        const saved = await api.loadShipping(uid);
+        if (checkout !== session) return;
+        if (saved) {
+          shippingForm.fill(saved);
+          setCheckoutMessage('We filled in your saved address. Changes here apply to this order only unless you tick "Save this address for next time".', 'info');
+        }
+      } catch (error) {
+        if (checkout !== session) return;
+        setCheckoutMessage(`We couldn't load your saved address: ${friendlyAccountError(error)} You can still enter it below.`, 'error');
+      }
+      setCheckoutLoading('');
+      shippingForm.focusFirst();
+    }
+
+    // Saves the order to the signed-in account first; only then are the
+    // ordered items removed from the cart. If the order can't be saved, the
+    // cart is left unchanged and the form stays open for a retry.
+    async function submitCheckout(event) {
+      event.preventDefault();
+      const session = checkout;
+      if (!session || session.busy) return;
+      if (session.done) {
+        window.location.href = 'orders.html';
+        return;
+      }
+      const shipping = shippingForm.read();
+      const errors = validateShipping(shipping);
+      if (shippingForm.showErrors(errors)) {
+        setCheckoutMessage('Please fix the highlighted fields.');
+        return;
+      }
+      const notes = orderNotesEl.value.trim();
+      if (notes.length > ORDER_NOTES_MAX) {
+        setCheckoutMessage(`Order notes must be ${ORDER_NOTES_MAX} characters or fewer.`);
+        orderNotesEl.focus();
+        return;
+      }
+      if (accountUid(cartState) !== session.uid || !cartState.canMutate) {
+        setCheckoutMessage('Your cart isn\'t ready or your sign-in changed. Close this form and try again.');
+        return;
+      }
+      const items = selectedCartItems();
+      if (!items.length) {
+        setCheckoutMessage('Select at least one item to checkout.');
+        return;
+      }
+
+      session.busy = true;
+      setCheckoutMessage('');
+      setCheckoutLoading('Placing your order…');
+      let api;
+      let order;
+      try {
+        api = await loadAccountData();
+        // Order numbers come from the clock; on the rare clash with an
+        // earlier order, retry with a new number instead of failing.
+        for (let attempt = 0; ; attempt += 1) {
+          order = buildOrder({ items, shipping, notes, email: api.currentEmail(), now: new Date(Date.now() + attempt) });
+          try {
+            await api.placeOrder(session.uid, order);
+            break;
+          } catch (error) {
+            if (!error || error.code !== 'order-exists' || attempt >= 2 || checkout !== session) throw error;
+          }
+        }
+      } catch (error) {
+        if (checkout !== session) return;
+        session.busy = false;
+        setCheckoutLoading('');
+        setCheckoutMessage(`Your order was not placed: ${friendlyAccountError(error)} Your cart was not changed.`);
+        return;
+      }
+
+      session.done = true;
+      checkoutInProgress = true;
+      renderCart();
+      const warnings = [];
+      if (saveAddressEl.checked) {
+        setCheckoutLoading('Saving your address…');
+        try {
+          await api.saveShipping(session.uid, shipping);
+        } catch (error) {
+          warnings.push(`Your address couldn't be saved for next time: ${friendlyAccountError(error)} You can add it in Account → Settings.`);
+        }
+      }
+      setCheckoutLoading('Updating your cart…');
+      try {
+        await cart.removeItems(items.map(item => item.id));
+      } catch (error) {
+        warnings.push(`The ordered items couldn't be removed from your cart (${(error && error.message) || 'unknown error'}). Remove them manually to avoid ordering twice.`);
+      }
+      checkoutInProgress = false;
+      session.busy = false;
+      setCheckoutLoading('');
+      shippingForm.setDisabled(true);
+      orderNotesEl.disabled = true;
+      saveAddressEl.disabled = true;
+      checkoutCancelBtn.hidden = true;
+      checkoutSubmitBtn.textContent = 'View My Orders';
+      checkoutSubmitBtn.focus();
+      if (warnings.length) {
+        setCheckoutMessage(`Order ${order.id} was placed. ${warnings.join(' ')}`, 'error');
+        renderCart();
+        return;
+      }
+      setCheckoutMessage(`Thank you! Order ${order.id} was placed. Taking you to your orders…`, 'success');
+      renderCart();
+      setTimeout(() => {
+        if (checkout === session) window.location.href = 'orders.html';
+      }, 1500);
+    }
+
+    checkoutBtn.addEventListener('click', () => {
+      if (checkoutInProgress || !cartState.canMutate || cartState.saving) return;
+      if (!accountUid(cartState)) {
+        checkoutSigninNote.hidden = false;
+        return;
+      }
+      if (cartState.items.length === 0) return;
+      if (selectedCartItems().length === 0) {
         cartSelectionMessageEl.textContent = 'Select at least one item to checkout.';
         updateCheckoutState(0);
         return;
       }
-
-      const total = selectedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
-      const now = new Date();
-      const order = {
-        id: 'JGV-' + now.getTime().toString().slice(-8),
-        detailKey: window.JGV3DOrderUtils.createOrderDetailKey(),
-        date: now.toISOString(),
-        status: 'In Queue',
-        items: selectedItems.map(item => ({
-          id: item.id,
-          title: item.title,
-          img: item.img,
-          qty: item.qty,
-          price: item.price
-        })),
-        total: total
-      };
-
       actionMessage = '';
-      try {
-        const orders = loadOrders();
-        orders.push(order);
-        saveOrders(orders);
-      } catch (error) {
-        actionMessage = 'Your demo order couldn\'t be saved in this browser, so nothing was removed from your cart. Please try again.';
-        renderCart();
-        return;
-      }
+      openCheckout();
+    });
 
-      checkoutInProgress = true;
-      renderCart();
-      try {
-        await cart.removeItems(selectedItems.map(item => item.id));
-      } catch (error) {
-        checkoutInProgress = false;
-        actionMessage = `Your demo order ${order.id} was saved in this browser, but the items couldn't be removed from your cart (${(error && error.message) || 'unknown error'}). They are still in your cart — remove them manually to avoid ordering twice.`;
-        renderCart();
-        return;
-      }
-
-      window.location.href = 'orders.html';
+    checkoutForm.addEventListener('submit', submitCheckout);
+    checkoutCancelBtn.addEventListener('click', () => {
+      if (checkout && checkout.busy) return;
+      closeCheckout();
+    });
+    // Escape closes the dialog, except while the order is being saved.
+    checkoutDialog.addEventListener('cancel', event => {
+      if (checkout && checkout.busy) event.preventDefault();
+    });
+    checkoutDialog.addEventListener('close', () => {
+      const session = checkout;
+      checkout = null;
+      resetCheckoutForm();
+      if (session && session.done) window.location.href = 'orders.html';
     });
 
     selectAllCheckbox.addEventListener('change', () => {
@@ -374,8 +562,18 @@
     });
 
     cart.subscribe(state => {
+      const previousKey = cartState.scopeKey;
       cartState = state;
+      // Sign-out or account switch: drop any open checkout and its address.
+      if (checkout && !checkout.done && state.scopeKey !== checkout.scopeKey) {
+        checkout = null;
+        closeCheckout();
+        actionMessage = 'Your sign-in changed, so checkout was cancelled. Nothing was ordered.';
+      } else if (previousKey !== state.scopeKey) {
+        actionMessage = '';
+      }
       renderCart();
+      updateCheckoutSummary();
     });
   </script>
 </body>

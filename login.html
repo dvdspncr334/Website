@@ -145,6 +145,15 @@
 
     .auth-cart-note { color: #999; font-size: 0.82em; line-height: 1.45; text-align: center; margin: 16px 0 0; }
 
+    .account-settings { text-align: left; }
+    .settings-heading { color: #e67e22; margin: 0 0 4px; }
+    .account-settings .auth-hint { margin: 0 0 16px; }
+    .settings-empty { color: #bbb; margin: 0 0 16px; }
+    .account-settings .shipping-address { margin: 0 0 16px; padding: 12px 14px; background: #2a2a2a; border: 1px solid #444; border-radius: 6px; }
+    .settings-actions { display: flex; gap: 10px; margin-top: 6px; }
+    .settings-actions .auth-btn { flex: 1; }
+    .account-settings .shipping-grid { grid-template-columns: 1fr; }
+
     .auth-footer { text-align: center; color: #999; font-size: 0.85em; margin-top: 24px; }
     .auth-footer a { color: #e67e22; }
 
@@ -228,6 +237,12 @@
 
     <!-- Signed-in view -->
     <section id="view-signed-in" class="profile" hidden>
+      <div class="auth-tabs" role="tablist" aria-label="Account sections">
+        <button type="button" class="auth-tab account-tab active" role="tab" id="tab-account" aria-controls="panel-account" aria-selected="true" data-panel="panel-account">Account</button>
+        <button type="button" class="auth-tab account-tab" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false" tabindex="-1" data-panel="panel-settings">Settings</button>
+      </div>
+
+      <div id="panel-account" role="tabpanel" aria-labelledby="tab-account">
       <div class="avatar" id="avatar"></div>
       <p class="profile-name" id="profile-name"></p>
       <p class="profile-email" id="profile-email"></p>
@@ -242,6 +257,37 @@
         <a href="admin.html" class="auth-btn auth-btn-outline" id="admin-link" hidden>Admin Dashboard</a>
         <button type="button" class="auth-btn auth-btn-danger" id="signout-btn">Sign Out</button>
       </div>
+      </div>
+
+      <!-- Buyer settings: saved shipping address (Firestore, this account only) -->
+      <div id="panel-settings" class="account-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+        <h3 class="settings-heading">Shipping address</h3>
+        <p class="auth-hint">Saved to your account only and used to fill in checkout. Nobody else can see it except JGV3D.</p>
+
+        <div class="auth-message" id="shipping-message" role="alert"></div>
+        <div class="auth-loading" id="shipping-loading" hidden>
+          <div class="spinner"></div>
+          <p id="shipping-loading-text">Loading your saved address…</p>
+        </div>
+        <button type="button" class="auth-btn auth-btn-outline" id="shipping-retry" hidden>Retry</button>
+
+        <div id="shipping-view" hidden>
+          <address class="shipping-address" id="shipping-summary" hidden></address>
+          <p class="settings-empty" id="shipping-empty" hidden>No saved address. Add one during checkout or here.</p>
+          <div class="settings-actions">
+            <button type="button" class="auth-btn auth-btn-primary" id="shipping-edit">Edit</button>
+            <button type="button" class="auth-btn auth-btn-danger" id="shipping-delete" hidden>Delete</button>
+          </div>
+        </div>
+
+        <form id="shipping-form" novalidate hidden>
+          <div id="settings-fields"></div>
+          <div class="settings-actions">
+            <button type="button" class="auth-btn auth-btn-outline" id="shipping-cancel">Cancel</button>
+            <button type="submit" class="auth-btn auth-btn-primary" id="shipping-save">Save changes</button>
+          </div>
+        </form>
+      </div>
     </section>
 
     <p class="auth-footer">
@@ -255,6 +301,8 @@
       createAccountWithEmail, resetPassword, signOut, friendlyError
     } from './auth-firebase.js';
     import { isAdmin } from './admin-auth.js';
+    import { loadAccountData, validateShipping, formatShippingLines, friendlyAccountError } from './account-data.js';
+    import { createShippingForm } from './shipping-form.js';
 
     const $ = (id) => document.getElementById(id);
     const views = { loading: $('view-loading'), out: $('view-signed-out'), in: $('view-signed-in') };
@@ -283,7 +331,7 @@
     function setMode(next) {
       mode = next;
       const signup = mode === 'signup';
-      document.querySelectorAll('.auth-tab').forEach((t) => t.classList.toggle('active', t.dataset.mode === mode));
+      document.querySelectorAll('#view-signed-out .auth-tab').forEach((t) => t.classList.toggle('active', t.dataset.mode === mode));
       $('auth-title').textContent = signup ? 'Create your account' : 'Welcome back';
       $('auth-subtitle').textContent = signup
         ? 'Save your details and keep track of your orders.'
@@ -316,10 +364,185 @@
       showMessage($('profile-message'), null);
     }
 
+    /* ---------- Account / Settings tabs ---------- */
+    const accountTabs = Array.from(document.querySelectorAll('.account-tab'));
+    function openAccountTab(panelId, { focus = false } = {}) {
+      accountTabs.forEach((tab) => {
+        const active = tab.dataset.panel === panelId;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', String(active));
+        tab.tabIndex = active ? 0 : -1;
+        if (active && focus) tab.focus();
+      });
+      $('panel-account').hidden = panelId !== 'panel-account';
+      $('panel-settings').hidden = panelId !== 'panel-settings';
+      if (panelId === 'panel-settings' && shipping.uid && !shipping.loaded && !shipping.loading) loadShippingSettings();
+    }
+    accountTabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => openAccountTab(tab.dataset.panel));
+      tab.addEventListener('keydown', (event) => {
+        let next = null;
+        if (event.key === 'ArrowRight') next = accountTabs[(index + 1) % accountTabs.length];
+        if (event.key === 'ArrowLeft') next = accountTabs[(index + accountTabs.length - 1) % accountTabs.length];
+        if (next) { event.preventDefault(); openAccountTab(next.dataset.panel, { focus: true }); }
+      });
+    });
+
+    /* ---------- Settings: saved shipping address ---------- */
+    // Everything is keyed to the signed-in uid. On sign-out or an account
+    // switch the address is cleared from the page and late responses for
+    // the previous account are ignored (epoch check).
+    const settingsForm = createShippingForm($('settings-fields'), { idPrefix: 'settings' });
+    const shipping = { uid: null, epoch: 0, saved: null, loaded: false, loading: false, busy: false };
+
+    function setShippingBusy(text) {
+      shipping.busy = Boolean(text);
+      $('shipping-loading').hidden = !text;
+      $('shipping-loading-text').textContent = text || '';
+      settingsForm.setDisabled(shipping.busy);
+      ['shipping-edit', 'shipping-delete', 'shipping-cancel', 'shipping-save', 'shipping-retry']
+        .forEach((id) => { $(id).disabled = shipping.busy; });
+    }
+
+    function renderShippingView() {
+      const saved = shipping.saved;
+      $('shipping-form').hidden = true;
+      $('shipping-view').hidden = false;
+      $('shipping-summary').textContent = saved ? formatShippingLines(saved).join('\n') : '';
+      $('shipping-summary').hidden = !saved;
+      $('shipping-empty').hidden = Boolean(saved);
+      $('shipping-edit').textContent = saved ? 'Edit' : 'Add address';
+      $('shipping-delete').hidden = !saved;
+    }
+
+    function resetShippingSettings(uid) {
+      shipping.uid = uid;
+      shipping.epoch += 1;
+      shipping.saved = null;
+      shipping.loaded = false;
+      shipping.loading = false;
+      settingsForm.clear();
+      setShippingBusy('');
+      $('shipping-form').hidden = true;
+      $('shipping-view').hidden = true;
+      $('shipping-summary').textContent = '';
+      $('shipping-retry').hidden = true;
+      showMessage($('shipping-message'), null);
+    }
+
+    function isCurrentShipping(epoch, uid) {
+      return epoch === shipping.epoch && uid === shipping.uid && auth.currentUser && auth.currentUser.uid === uid;
+    }
+
+    async function loadShippingSettings() {
+      const { epoch, uid } = shipping;
+      if (!uid) return;
+      shipping.loading = true;
+      $('shipping-retry').hidden = true;
+      $('shipping-view').hidden = true;
+      showMessage($('shipping-message'), null);
+      setShippingBusy('Loading your saved address…');
+      try {
+        const api = await loadAccountData();
+        const saved = await api.loadShipping(uid);
+        if (!isCurrentShipping(epoch, uid)) return;
+        shipping.saved = saved;
+        shipping.loaded = true;
+        renderShippingView();
+      } catch (error) {
+        if (!isCurrentShipping(epoch, uid)) return;
+        showMessage($('shipping-message'), `Couldn't load your saved address. ${friendlyAccountError(error)}`, 'error');
+        $('shipping-retry').hidden = false;
+      } finally {
+        if (isCurrentShipping(epoch, uid)) {
+          shipping.loading = false;
+          setShippingBusy('');
+        }
+      }
+    }
+
+    $('shipping-retry').addEventListener('click', () => { if (!shipping.busy) loadShippingSettings(); });
+
+    $('shipping-edit').addEventListener('click', () => {
+      if (shipping.busy) return;
+      showMessage($('shipping-message'), null);
+      if (shipping.saved) settingsForm.fill(shipping.saved);
+      else settingsForm.clear();
+      $('shipping-view').hidden = true;
+      $('shipping-form').hidden = false;
+      settingsForm.focusFirst();
+    });
+
+    $('shipping-cancel').addEventListener('click', () => {
+      if (shipping.busy) return;
+      settingsForm.clear();
+      showMessage($('shipping-message'), null);
+      renderShippingView();
+      $('shipping-edit').focus();
+    });
+
+    $('shipping-form').addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); $('shipping-cancel').click(); }
+    });
+
+    $('shipping-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (shipping.busy) return;
+      const { epoch, uid } = shipping;
+      const data = settingsForm.read();
+      if (settingsForm.showErrors(validateShipping(data))) {
+        showMessage($('shipping-message'), 'Please fix the highlighted fields.', 'error');
+        return;
+      }
+      showMessage($('shipping-message'), null);
+      setShippingBusy('Saving your address…');
+      try {
+        const api = await loadAccountData();
+        const saved = await api.saveShipping(uid, data);
+        if (!isCurrentShipping(epoch, uid)) return;
+        shipping.saved = saved;
+        shipping.loaded = true;
+        settingsForm.clear();
+        setShippingBusy('');
+        renderShippingView();
+        showMessage($('shipping-message'), 'Address saved. It will fill in automatically at checkout.', 'success');
+      } catch (error) {
+        if (!isCurrentShipping(epoch, uid)) return;
+        setShippingBusy('');
+        showMessage($('shipping-message'), `Couldn't save your address. ${friendlyAccountError(error)}`, 'error');
+      }
+    });
+
+    $('shipping-delete').addEventListener('click', async () => {
+      if (shipping.busy || !shipping.saved) return;
+      if (!window.confirm('Delete your saved shipping address? Past orders keep the address they were shipped to.')) return;
+      const { epoch, uid } = shipping;
+      showMessage($('shipping-message'), null);
+      setShippingBusy('Deleting your address…');
+      try {
+        const api = await loadAccountData();
+        await api.deleteShipping(uid);
+        if (!isCurrentShipping(epoch, uid)) return;
+        shipping.saved = null;
+        setShippingBusy('');
+        renderShippingView();
+        showMessage($('shipping-message'), 'Saved address deleted.', 'success');
+      } catch (error) {
+        if (!isCurrentShipping(epoch, uid)) return;
+        setShippingBusy('');
+        showMessage($('shipping-message'), `Couldn't delete your address. ${friendlyAccountError(error)}`, 'error');
+      }
+    });
+
     // Single source of truth: Firebase tells us when the user signs in or out.
     onUserChanged((user) => {
       setBusy(false);
       $('admin-link').hidden = true;
+      const nextUid = user ? user.id : null;
+      if (nextUid !== shipping.uid) {
+        resetShippingSettings(nextUid);
+        openAccountTab(location.hash === '#settings' ? 'panel-settings' : 'panel-account');
+      }
       if (user) {
         renderUser(user);
         showView('in');
@@ -336,7 +559,7 @@
       }
     });
 
-    document.querySelectorAll('.auth-tab').forEach((tab) => {
+    document.querySelectorAll('#view-signed-out .auth-tab').forEach((tab) => {
       tab.addEventListener('click', () => { if (!busy) setMode(tab.dataset.mode); });
     });
 

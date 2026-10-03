@@ -3,11 +3,13 @@
 // (needs Java 11+; `firebase emulators:exec` sets FIRESTORE_EMULATOR_HOST).
 // Without an emulator these tests are skipped.
 import { test, before, after, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { itemKey, planMutation, addOperation, removeOperation, changeQtyOperation } from '../cart-store.js';
 import { createFirestoreCartBackend } from '../cart-firebase.js';
+import { createAccountData, buildOrder } from '../account-data.js';
 
 const emulator = process.env.FIRESTORE_EMULATOR_HOST;
 const skip = emulator ? false : 'FIRESTORE_EMULATOR_HOST not set (run `npm run test:rules`)';
@@ -246,4 +248,125 @@ test('only current admins can delete activity; deletes never touch auth or admin
   await seedActivity('bob');
   await assertSucceeds(fs.deleteDoc(fs.doc(root, 'admins/root')));
   await assertFails(fs.deleteDoc(fs.doc(root, 'userActivity/bob')), 'revoked admin cannot delete');
+});
+
+/* ---------------- Shipping addresses and orders ---------------- */
+
+const address = (extra = {}) => ({
+  firstName: 'Ada', lastName: 'Lovelace', streetAddress1: '1 Main St', streetAddress2: '', city: 'Austin',
+  state: 'TX', postalCode: '78701', country: 'United States', phone: '', deliveryNotes: '', ...extra
+});
+const shippingPath = uid => `users/${uid}/profile/shipping`;
+const orderFor = (uid, extra = {}) => ({
+  ...buildOrder({ items: [item('strat', 2)], shipping: address(), notes: 'thanks', email: `${uid}@example.com`, now: new Date(1700000012345) }),
+  createdAt: fs.serverTimestamp(),
+  ...extra
+});
+const orderPath = (uid, id = 'JGV-00012345') => `users/${uid}/orders/${id}`;
+
+function accountDataFor(uid) {
+  return createAccountData({ db: asUser(uid), fs, auth: { currentUser: { uid, email: `${uid}@example.com` } } });
+}
+
+test('owner can save, read, update and delete their shipping address; others cannot', { skip }, async () => {
+  const { assertFails, assertSucceeds } = rut;
+  const ref = fs.doc(asUser('alice'), shippingPath('alice'));
+  await assertSucceeds(fs.setDoc(ref, { ...address(), lastUpdated: fs.serverTimestamp() }));
+  await assertSucceeds(fs.getDoc(ref));
+  await assertSucceeds(fs.setDoc(ref, { ...address({ city: 'Dallas' }), lastUpdated: fs.serverTimestamp() }));
+  for (const other of [db(null), asUser('bob')]) {
+    await assertFails(fs.getDoc(fs.doc(other, shippingPath('alice'))));
+    await assertFails(fs.setDoc(fs.doc(other, shippingPath('alice')), { ...address(), lastUpdated: fs.serverTimestamp() }));
+    await assertFails(fs.deleteDoc(fs.doc(other, shippingPath('alice'))));
+  }
+  await assertFails(fs.getDocs(fs.collection(asUser('bob'), 'users/alice/profile')));
+  await assertFails(fs.setDoc(fs.doc(asUser('alice'), 'users/alice/profile/other'), { ...address(), lastUpdated: fs.serverTimestamp() }));
+  await assertSucceeds(fs.deleteDoc(ref));
+});
+
+test('shipping address shape is validated', { skip }, async () => {
+  const { assertFails } = rut;
+  const ref = fs.doc(asUser('alice'), shippingPath('alice'));
+  const bad = [
+    { ...address({ firstName: '' }), lastUpdated: fs.serverTimestamp() },
+    { ...address({ postalCode: 'x'.repeat(21) }), lastUpdated: fs.serverTimestamp() },
+    { ...address({ phone: 5 }), lastUpdated: fs.serverTimestamp() },
+    { ...address(), lastUpdated: new Date(0) },
+    { ...address(), lastUpdated: fs.serverTimestamp(), isAdmin: true },
+    { ...address() }
+  ];
+  for (const data of bad) await assertFails(fs.setDoc(ref, data));
+});
+
+test('owner can create and read their own orders but never edit or delete them', { skip }, async () => {
+  const { assertFails, assertSucceeds } = rut;
+  const alice = asUser('alice');
+  const ref = fs.doc(alice, orderPath('alice'));
+  await assertSucceeds(fs.setDoc(ref, orderFor('alice')));
+  await assertSucceeds(fs.getDoc(ref));
+  await assertSucceeds(fs.getDocs(fs.collection(alice, 'users/alice/orders')));
+  await assertFails(fs.updateDoc(ref, { status: 'Shipped' }));
+  await assertFails(fs.setDoc(ref, orderFor('alice')), 'existing orders are not overwritten');
+  await assertFails(fs.deleteDoc(ref));
+});
+
+test('order shape is validated', { skip }, async () => {
+  const { assertFails } = rut;
+  const ref = fs.doc(asUser('alice'), orderPath('alice'));
+  const bad = [
+    orderFor('alice', { status: 'Shipped' }),
+    orderFor('alice', { id: 'JGV-99999999' }),
+    orderFor('alice', { items: [] }),
+    orderFor('alice', { total: -1 }),
+    orderFor('alice', { email: 'bob@example.com' }),
+    orderFor('alice', { createdAt: new Date(0) }),
+    orderFor('alice', { shipping: address({ city: '' }) }),
+    orderFor('alice', { shipping: { ...address(), extra: 'x' } }),
+    orderFor('alice', { notes: 'x'.repeat(1001) }),
+    orderFor('alice', { paid: true })
+  ];
+  for (const data of bad) await assertFails(fs.setDoc(ref, data));
+  await assertFails(fs.setDoc(fs.doc(asUser('alice'), orderPath('alice', 'not-an-order')), orderFor('alice', { id: 'not-an-order' })));
+});
+
+test('other users cannot read, list or create orders for someone else', { skip }, async () => {
+  const { assertFails } = rut;
+  await seedDoc(orderPath('alice'), { ...orderFor('alice'), createdAt: new Date() });
+  for (const other of [db(null), asUser('bob')]) {
+    await assertFails(fs.getDoc(fs.doc(other, orderPath('alice'))));
+    await assertFails(fs.getDocs(fs.collection(other, 'users/alice/orders')));
+    await assertFails(fs.setDoc(fs.doc(other, orderPath('alice', 'JGV-00000001')), orderFor('bob', { id: 'JGV-00000001' })));
+  }
+  await assertFails(fs.getDocs(fs.collectionGroup(asUser('bob'), 'orders')), 'non-admins cannot list all orders');
+});
+
+test('admins can read every order and saved address, but cannot change them', { skip }, async () => {
+  const { assertFails, assertSucceeds } = rut;
+  await seedAdmin('root');
+  await seedDoc(orderPath('alice'), { ...orderFor('alice'), createdAt: new Date() });
+  await seedDoc(orderPath('bob', 'JGV-00000002'), { ...orderFor('bob', { id: 'JGV-00000002' }), createdAt: new Date() });
+  await seedDoc(shippingPath('alice'), { ...address(), lastUpdated: new Date() });
+  const root = asUser('root');
+  const all = await assertSucceeds(fs.getDocs(fs.collectionGroup(root, 'orders')));
+  assert.equal(all.size, 2);
+  await assertSucceeds(fs.getDoc(fs.doc(root, shippingPath('alice'))));
+  await assertFails(fs.updateDoc(fs.doc(root, orderPath('alice')), { status: 'Shipped' }));
+  await assertFails(fs.deleteDoc(fs.doc(root, orderPath('alice'))));
+  await assertFails(fs.setDoc(fs.doc(root, shippingPath('alice')), { ...address(), lastUpdated: fs.serverTimestamp() }));
+});
+
+test('the real account-data client writes pass the rules', { skip }, async () => {
+  const { assertSucceeds, assertFails } = rut;
+  const alice = accountDataFor('alice');
+  await assertSucceeds(alice.saveShipping('alice', address({ firstName: '  Ada  ' })));
+  assert.equal((await alice.loadShipping('alice')).firstName, 'Ada');
+  const order = buildOrder({ items: [item('strat'), item('tele', 3)], shipping: address(), email: 'alice@example.com' });
+  await assertSucceeds(alice.placeOrder('alice', order));
+  await assert.rejects(alice.placeOrder('alice', order), { code: 'order-exists' });
+  assert.deepEqual((await alice.listOrders('alice')).map(o => o.id), [order.id]);
+  assert.equal((await alice.getOrder('alice', order.id)).shipping.city, 'Austin');
+  await assertSucceeds(alice.deleteShipping('alice'));
+  assert.equal(await alice.loadShipping('alice'), null);
+  const bobAsAlice = createAccountData({ db: asUser('bob'), fs, auth: { currentUser: { uid: 'alice', email: 'alice@example.com' } } });
+  await assertFails(bobAsAlice.saveShipping('alice', address()));
 });
