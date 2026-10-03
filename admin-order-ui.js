@@ -639,7 +639,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     // Never carry selections or captured confirmations across account scopes.
     selected.clear();
     clearDialogs();
-    if (!loaded) { refresh(); return; }
+    if (!loaded) return refresh();
     render();
     message(`${scoped().length} of ${orders.length} loaded account order(s) in scope: ${scopeLabel()}.`);
   });
@@ -650,7 +650,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     }
     render();
   });
-  $('order-delete-selected').addEventListener('click', () => openDelete(scoped().filter(order => selected.has(order.path)), 'Selected document paths (including hidden selections)'));
+  $('order-delete-selected').addEventListener('click', () => openDelete(scoped().filter(order => selected.has(order.path)), 'Selected document paths in current account scope (including filter-hidden selections)'));
   $('order-delete-filtered').addEventListener('click', () => openDelete(visible(), `Current filtered result: ${JSON.stringify(filters())}`));
   $('order-export-filtered').addEventListener('click', () => {
     if (!loaded || busy) return;
