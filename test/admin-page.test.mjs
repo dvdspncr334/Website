@@ -59,6 +59,9 @@ test('dashboard is first, all five tabs are linked to accessible panels, and dia
   assert.doesNotMatch(admin, /fs\.limit\(50\)/);
   assert.match(read('style.css'), /\.admin-dialog::backdrop/);
   assert.match(read('style.css'), /\.admin-page \[hidden\]/);
+  assert.match(admin, /id="bulk-toolbar"[^>]*hidden/);
+  for (const label of ['Bulk update status', 'Bulk update discount %', 'Bulk update price']) assert.ok(admin.includes(`>${label}</button>`));
+  assert.doesNotMatch(admin, /id="bulk-open"/);
 });
 
 // A minimal DOM fixture exercises the actual inline controller without Firebase
@@ -111,7 +114,7 @@ const validProducts = () => [
   { id: 'gamma', title: 'Gamma', price: '30', img: 'images/c.png', status: 'in-stock' }
 ].map(product => shopTools.normalizeProduct(product));
 
-function fixture({ users = [], admins = [], failRead = false, failClear = false, denied = false, blockedStorage = false } = {}) {
+function fixture({ users = [], admins = [], failRead = false, failClear = false, failDelete = false, failDownload = false, denied = false, blockedStorage = false } = {}) {
   const elements = new Map();
   for (const match of admin.matchAll(/<([a-z][a-z0-9]*)\b([^>]*\bid="([^"]+)"[^>]*)>/g)) {
     const el = new Element(match[1]);
@@ -136,6 +139,7 @@ function fixture({ users = [], admins = [], failRead = false, failClear = false,
   };
   let currentUsers = users;
   let failActivity = failRead;
+  let failDeletion = failDelete;
   let csvFetches = 0;
   const fs = {
     collection: (_, name) => name,
@@ -162,7 +166,10 @@ function fixture({ users = [], admins = [], failRead = false, failClear = false,
     querySelectorAll: selector => [...elements.values()].filter(el => el.className.split(' ').includes(selector.slice(1))),
     createElement: tag => {
       const el = new Element(tag);
-      if (tag === 'a') el.onClick = () => downloads.push({ filename: el.download, blob: blobs.get(el.href) });
+      if (tag === 'a') el.onClick = () => {
+        if (failDownload) throw new Error('download blocked');
+        downloads.push({ filename: el.download, blob: blobs.get(el.href) });
+      };
       return el;
     },
     createTextNode: text => ({ textContent: text }),
@@ -186,6 +193,7 @@ function fixture({ users = [], admins = [], failRead = false, failClear = false,
     clearAdminCache() {}, loadFirebase: async () => ({ fs, db: {} }),
     deleteUserActivity: async uid => {
       if (denied) throw Object.assign(new Error('denied'), { code: 'permission-denied' });
+      if (failDeletion) throw Object.assign(new Error('offline'), { code: 'unavailable' });
       deletions.push(`userActivity/${uid}`);
       currentUsers = currentUsers.filter(user => user.uid !== uid);
     },
@@ -211,7 +219,8 @@ function fixture({ users = [], admins = [], failRead = false, failClear = false,
     get, page: context.page, storage, downloads, reads, deletions, checks,
     csvFetches: () => csvFetches,
     setUsers: records => { currentUsers = records; },
-    allowReads: () => { failActivity = false; }
+    allowReads: () => { failActivity = false; },
+    allowDeletes: () => { failDeletion = false; }
   };
 }
 
@@ -272,6 +281,7 @@ test('activity retry restores unavailable counts, filters local inclusive days a
   await f.get('activity-email').emit('input');
   await f.get('activity-export').emit('click');
   const csv = await f.downloads[0].blob.text();
+  assert.equal(csv.split('\r\n')[0], '"Email","Last sign-in","Last active","UID"');
   assert.match(csv, /Zulu@example.com/);
   assert.doesNotMatch(csv, /alpha@example|other@example|unknown@example/);
   assert.equal(f.page.state().audit.at(-1).count, 1);
@@ -283,20 +293,21 @@ test('activity retry restores unavailable counts, filters local inclusive days a
 test('select-all affects visible products only; bulk validates, previews, confirms selected rows and clears selection', async () => {
   const f = fixture();
   await f.page.ensureProducts();
+  assert.equal(f.get('bulk-toolbar').hidden, true);
   f.get('product-search').value = 'Alpha';
   f.page.renderProducts();
   f.get('select-visible').checked = true;
   await f.get('select-visible').emit('change');
   assert.equal(f.page.state().selected.join(','), 'alpha');
+  assert.equal(f.get('bulk-toolbar').hidden, false);
   f.get('product-search').value = '';
   f.page.renderProducts();
   const beta = f.get('product-rows').children[1].children[0].children[0];
   beta.checked = true;
   await beta.emit('change');
   assert.equal(f.get('select-visible').indeterminate, true);
-  await f.get('bulk-open').emit('click');
-  f.get('bulk-field').value = 'price';
-  await f.get('bulk-field').emit('change');
+  await f.get('bulk-price-open').emit('click');
+  assert.equal(f.get('bulk-field').value, 'price');
   f.get('bulk-number-value').value = '-1';
   await f.get('bulk-form').emit('submit');
   assert.equal(f.get('bulk-confirm').disabled, true);
@@ -310,6 +321,7 @@ test('select-all affects visible products only; bulk validates, previews, confir
   await f.get('bulk-confirm').emit('click');
   assert.equal(f.page.state().rows.map(row => row.price).join(','), '25.50,25.50,30');
   assert.equal(f.page.state().selected.length, 0);
+  assert.equal(f.get('bulk-toolbar').hidden, true);
   assert.equal(f.page.state().dirty, true);
   assert.equal(f.get('bulk-dialog').open, false);
   assert.match(f.page.state().audit.at(-1).details, /alpha, beta; price=25\.50/);
@@ -373,7 +385,7 @@ test('backup uses edited memory products, all collections, safe fields, timestam
   assert.doesNotMatch(text, /DO_NOT_EXPORT|credential|token/);
   assert.match(data.timestamp, /Z$/);
   assert.match(f.get('backup-status').textContent, /bytes/);
-  assert.equal(f.page.state().audit.map(entry => entry.action).join(','), 'Backup download,JSON export');
+  assert.equal(f.page.state().audit.map(entry => entry.action).join(','), 'Backup download');
 });
 
 test('maintenance freshly checks permission, reports partial committed progress and refreshes remaining activity', async () => {
@@ -398,15 +410,23 @@ test('maintenance freshly checks permission, reports partial committed progress 
 test('local order reset removes only the order key; audit resets on refresh and renders unsafe strings as text', async () => {
   const f = fixture();
   assert.equal(f.page.state().audit.length, 0);
+  f.storage.set('jgv3d_orders', '[{"id":"one"},{"id":"two"},null]');
   const pending = f.get('reset-orders').emit('click');
   await confirmTwice(f);
   await pending;
   assert.deepEqual(f.deletions, ['jgv3d_orders']);
   assert.equal(f.storage.get('jgv3d_cart'), 'keep');
+  assert.equal(f.page.state().audit.at(-1).count, 2);
   f.page.recordAudit('test', '<img src=x onerror=bad()>');
   assert.equal(f.get('audit-rows').children[0].children[2].textContent, '<img src=x onerror=bad()>');
   assert.equal(f.get('audit-rows').children[0].children[2].children.length, 0);
-  await f.get('audit-clear').emit('click');
+  let clearPending = f.get('audit-clear').emit('click');
+  await f.get('confirm-cancel').emit('click');
+  await clearPending;
+  assert.equal(f.page.state().audit.length, 2);
+  clearPending = f.get('audit-clear').emit('click');
+  await confirmTwice(f);
+  await clearPending;
   assert.equal(f.page.state().audit.length, 0);
   assert.equal(f.storage.get('jgv3d_admin_audit'), '[]');
   const blocked = fixture({ blockedStorage: true });
@@ -467,9 +487,8 @@ test('bulk status and discount updates are validated and previewed before applic
     const checkbox = f.get('product-rows').children[0].children[0].children[0];
     checkbox.checked = true;
     await checkbox.emit('change');
-    await f.get('bulk-open').emit('click');
-    f.get('bulk-field').value = field;
-    await f.get('bulk-field').emit('change');
+    await f.get(`bulk-${field}-open`).emit('click');
+    assert.equal(f.get('bulk-field').value, field);
     f.get(field === 'status' ? 'bulk-status-value' : 'bulk-number-value').value = value;
     await f.get('bulk-form').emit('submit');
     assert.notEqual(f.page.state().rows[0][field], value);
@@ -485,9 +504,8 @@ test('bulk cancellation and changed-value preview invalidation never apply rows'
   await f.page.ensureProducts();
   f.get('select-visible').checked = true;
   await f.get('select-visible').emit('change');
-  await f.get('bulk-open').emit('click');
-  f.get('bulk-field').value = 'discount';
-  await f.get('bulk-field').emit('change');
+  await f.get('bulk-discount-open').emit('click');
+  assert.equal(f.get('bulk-field').value, 'discount');
   f.get('bulk-number-value').value = '15';
   await f.get('bulk-form').emit('submit');
   assert.equal(f.get('bulk-confirm').disabled, false);
@@ -498,10 +516,17 @@ test('bulk cancellation and changed-value preview invalidation never apply rows'
   assert.equal(f.page.state().rows[0].discount, '');
   await f.get('bulk-cancel').emit('click');
   assert.equal(f.page.state().selected.length, 3);
+  assert.equal(f.get('bulk-toolbar').hidden, false);
   assert.equal(f.page.state().audit.length, 0);
+  f.get('select-visible').checked = false;
+  await f.get('select-visible').emit('change');
+  assert.equal(f.page.state().selected.length, 0);
+  assert.equal(f.get('bulk-toolbar').hidden, true);
 });
 
 test('backup loads products when needed and never downloads an incomplete backup on read failure', async () => {
+  assert.match(admin, /id="backup-download">Download full backup<\/button>/);
+  assert.match(admin, /<h2>Database backup<\/h2>[\s\S]*?id="backup-status"[^>]*><\/p>\s*<\/div>\s*<div class="admin-card">\s*<h2>Maintenance<\/h2>/);
   const f = fixture();
   await f.get('backup-download').emit('click');
   assert.equal(f.csvFetches(), 1);
@@ -510,7 +535,34 @@ test('backup loads products when needed and never downloads an incomplete backup
   await failing.get('backup-download').emit('click');
   assert.equal(failing.downloads.length, 0);
   assert.match(failing.get('backup-status').textContent, /no file downloaded/);
+  assert.match(failing.get('backup-status').textContent, /Use Download full backup to retry/);
   assert.equal(failing.get('backup-download').disabled, false);
+});
+
+test('failed activity deletion offers an explicit retry with fresh double typed confirmation', async () => {
+  const f = fixture({ users: [{ uid: 'retry-user', email: 'retry@example.com', lastSignInAt: Date.now() }], failDelete: true });
+  await f.page.loadDashboard();
+  let pending = f.page.removeActivity(f.page.state().users[0]);
+  await confirmTwice(f);
+  await pending;
+  assert.equal(f.get('activity-delete-retry').hidden, false);
+  assert.match(f.get('activity-status').textContent, /Use Retry activity deletion/);
+  assert.equal(f.deletions.length, 0);
+  assert.equal(f.page.state().audit.length, 0);
+  pending = f.get('activity-delete-retry').emit('click');
+  await f.get('confirm-form').emit('submit');
+  assert.equal(f.get('confirm-label').hidden, false);
+  await f.get('confirm-cancel').emit('click');
+  await pending;
+  assert.equal(f.deletions.length, 0);
+  assert.equal(f.get('activity-delete-retry').hidden, false);
+  f.allowDeletes();
+  pending = f.get('activity-delete-retry').emit('click');
+  await confirmTwice(f);
+  await pending;
+  assert.deepEqual(f.deletions, ['userActivity/retry-user']);
+  assert.equal(f.get('activity-delete-retry').hidden, true);
+  assert.equal(f.get('stat-active').textContent, '0');
 });
 
 test('successful maintenance refreshes zero activity and cancelled resets keep storage unchanged', async () => {
@@ -530,4 +582,35 @@ test('successful maintenance refreshes zero activity and cancelled resets keep s
   await f.get('confirm-cancel').emit('click');
   await pending;
   assert.equal(f.storage.get('jgv3d_orders'), '[{"id":"demo"}]');
+});
+
+test('audit CSV and JSON export snapshot entries without adding logs and protect spreadsheet cells', async () => {
+  const f = fixture();
+  f.page.recordAudit('@formula-action', '=SUM(1,2)\nSecond "line"', 3);
+  f.page.recordAudit('Product updated', 'ID: alpha', 1);
+  const before = f.page.state().audit;
+  await f.get('audit-export-csv').emit('click');
+  assert.match(f.downloads[0].filename, /^jgv3d-audit-\d{4}-\d{2}-\d{2}-\d{6}\.csv$/);
+  const csv = await f.downloads[0].blob.text();
+  assert.equal(csv.split('\r\n')[0], '"Timestamp","Action","Details","Changed items count"');
+  assert.ok(csv.includes('"\u0027@formula-action"'));
+  assert.ok(csv.includes('"\u0027=SUM(1,2)\nSecond ""line"""'));
+  assert.match(csv, /"ID: alpha","1"/);
+  assert.match(f.get('audit-export-status').textContent, /Exported 2 audit entries.*bytes/);
+  await f.get('audit-export-json').emit('click');
+  assert.match(f.downloads[1].filename, /^jgv3d-audit-\d{4}-\d{2}-\d{2}-\d{6}\.json$/);
+  assert.deepEqual(JSON.parse(await f.downloads[1].blob.text()), before);
+  assert.deepEqual(f.page.state().audit, before, 'export does not change the exported list or count');
+});
+
+test('audit export failures show an explicit error and leave the session log intact', async () => {
+  const f = fixture({ failDownload: true });
+  f.page.recordAudit('Product added', 'ID: example', 1);
+  for (const format of ['csv', 'json']) {
+    await f.get(`audit-export-${format}`).emit('click');
+    assert.match(f.get('audit-export-status').textContent, /Couldn't export audit log.*try again/);
+    assert.match(f.get('audit-export-status').className, /is-error/);
+    assert.equal(f.page.state().audit.length, 1);
+    assert.equal(f.downloads.length, 0);
+  }
 });

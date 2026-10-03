@@ -64,8 +64,12 @@
             <button type="button" class="admin-btn" id="add-product-btn" disabled>Add product</button>
             <button type="button" class="admin-btn admin-btn-outline" id="reload-csv-btn">Reload from site</button>
             <button type="button" class="admin-btn admin-btn-outline" id="download-csv-btn" disabled>Download CSV</button>
-            <button type="button" class="admin-btn" id="bulk-open" disabled>Bulk update selected</button>
+          </div>
+          <div class="admin-toolbar" id="bulk-toolbar" aria-label="Selected product actions" hidden>
             <span id="selection-count" role="status">0 selected</span>
+            <button type="button" class="admin-btn" id="bulk-status-open">Bulk update status</button>
+            <button type="button" class="admin-btn" id="bulk-discount-open">Bulk update discount %</button>
+            <button type="button" class="admin-btn" id="bulk-price-open">Bulk update price</button>
           </div>
           <p id="shop-status" class="admin-status" role="status"></p>
           <button type="button" class="admin-btn" id="shop-retry" hidden>Retry</button>
@@ -125,6 +129,7 @@
           <p id="activity-status" class="admin-status" role="status"></p>
           <p id="activity-count" class="admin-status" role="status">Total: not loaded · Filtered: not loaded</p>
           <button type="button" class="admin-btn" id="activity-retry" hidden>Retry activity</button>
+          <button type="button" class="admin-btn admin-btn-danger" id="activity-delete-retry" hidden>Retry activity deletion</button>
           <div class="admin-table-wrap">
             <table class="admin-table">
               <thead><tr><th>Email</th><th>Last sign-in</th><th>Last active</th><th>UID</th><th>Actions</th></tr></thead>
@@ -152,10 +157,13 @@
       <!-- Settings -->
       <section id="panel-settings" class="admin-panel" role="tabpanel" aria-labelledby="tab-settings" hidden>
         <div class="admin-card">
-          <h2>Backup and maintenance</h2>
+          <h2>Database backup</h2>
           <p class="admin-note">Backup includes the current in-memory products (including unsaved edits), all user activity, and the admin whitelist. No credentials are included.</p>
-          <button type="button" class="admin-btn" id="backup-download">Download JSON backup</button>
+          <button type="button" class="admin-btn" id="backup-download">Download full backup</button>
           <p id="backup-status" class="admin-status" role="status"></p>
+        </div>
+        <div class="admin-card">
+          <h2>Maintenance</h2>
           <p class="admin-note admin-warning">Activity deletion removes tracking records only, never Firebase Auth accounts or admin access. Users can create new activity when they return. Order reset affects only demo orders in this browser, not carts or accounts.</p>
           <div class="admin-toolbar">
             <button type="button" class="admin-btn admin-btn-danger" id="clear-activity">Clear all user activity</button>
@@ -166,7 +174,12 @@
         <div class="admin-card">
           <h2>Session audit log</h2>
           <p class="admin-note">This log lasts only until this page is refreshed. It records successful changes and downloads, not credentials.</p>
-          <button type="button" class="admin-btn admin-btn-outline" id="audit-clear">Clear log</button>
+          <div class="admin-toolbar">
+            <button type="button" class="admin-btn admin-btn-outline" id="audit-export-csv">Export audit log as CSV</button>
+            <button type="button" class="admin-btn admin-btn-outline" id="audit-export-json">Export audit log as JSON</button>
+            <button type="button" class="admin-btn admin-btn-outline" id="audit-clear">Clear log</button>
+          </div>
+          <p id="audit-export-status" class="admin-status" role="status"></p>
           <div class="admin-table-wrap"><table class="admin-table">
             <thead><tr><th>Time</th><th>Action</th><th>Details</th><th>Count</th></tr></thead>
             <tbody id="audit-rows"></tbody>
@@ -274,7 +287,30 @@
       audit.record(action, details, count);
       renderAudit();
     }
-    $('audit-clear').addEventListener('click', () => { audit.clear(); renderAudit(); });
+    $('audit-clear').addEventListener('click', async () => {
+      $('audit-clear').disabled = true;
+      try {
+        if (!await confirmDestructive('Clear session audit log', 'Delete all audit entries for this page session? No product, activity, account, or order data will be changed.')) return;
+        audit.clear();
+        renderAudit();
+      } finally { $('audit-clear').disabled = false; }
+    });
+    for (const format of ['csv', 'json']) {
+      $(`audit-export-${format}`).addEventListener('click', () => {
+        try {
+          const entries = audit.entries();
+          const contents = format === 'csv'
+            ? exportTableCSV(['Timestamp', 'Action', 'Details', 'Changed items count'],
+              entries.map(entry => [entry.timestamp, entry.action, entry.details, entry.count]))
+            : JSON.stringify(entries, null, 2);
+          const filename = backupFilename().replace('jgv3d-backup-', 'jgv3d-audit-').replace(/\.json$/, `.${format}`);
+          const size = downloadFile(contents, filename, format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json');
+          setStatus($('audit-export-status'), `Exported ${entries.length} audit entr${entries.length === 1 ? 'y' : 'ies'} to ${filename} (${size.toLocaleString()} bytes).`, 'ok');
+        } catch (error) {
+          setStatus($('audit-export-status'), 'Couldn\'t export audit log. Please try again.', 'error');
+        }
+      });
+    }
     renderAudit();
 
     function downloadFile(contents, filename, type) {
@@ -553,7 +589,7 @@
       $('shop-retry').hidden = true;
       $('add-product-btn').disabled = true;
       $('download-csv-btn').disabled = true;
-      $('bulk-open').disabled = true;
+      $('bulk-toolbar').hidden = true;
       $('select-visible').disabled = true;
       closeForm();
       setStatus($('shop-status'), 'Loading data/shop.csv…');
@@ -638,7 +674,9 @@
       $('select-visible').indeterminate = checked > 0 && checked < visible.length;
       $('select-visible').disabled = !visible.length;
       $('selection-count').textContent = `${selectedProducts.size} selected`;
-      $('bulk-open').disabled = !selectedProducts.size || Boolean(csvPromise);
+      const unavailable = !selectedProducts.size || Boolean(csvPromise);
+      $('bulk-toolbar').hidden = unavailable;
+      for (const id of ['bulk-status-open', 'bulk-discount-open', 'bulk-price-open']) $(id).disabled = unavailable;
     }
     $('select-visible').addEventListener('change', () => {
       for (const checkbox of $('product-rows').querySelectorAll('input[type="checkbox"]')) {
@@ -662,15 +700,18 @@
       $('bulk-status-value').disabled = !isStatus;
       $('bulk-number-value').disabled = isStatus;
     }
-    $('bulk-open').addEventListener('click', () => {
+    function openBulk(field) {
       if (!selectedProducts.size || csvPromise) return;
       bulkSelection = [...selectedProducts];
-      $('bulk-field').value = 'status';
+      $('bulk-field').value = field;
       $('bulk-status-value').value = '';
       $('bulk-number-value').value = '';
       invalidateBulk();
       $('bulk-dialog').showModal();
-    });
+    }
+    for (const field of ['status', 'discount', 'price']) {
+      $(`bulk-${field}-open`).addEventListener('click', () => openBulk(field));
+    }
     for (const id of ['bulk-field', 'bulk-status-value', 'bulk-number-value']) {
       $(id).addEventListener('input', invalidateBulk);
       $(id).addEventListener('change', invalidateBulk);
@@ -937,6 +978,7 @@
     let activityLoaded = false;
     let activityPromise = null;
     let activityMutation = false;
+    let failedActivityDeletion = null;
 
     async function readCollection(name) {
       const { fs, db } = fb;
@@ -1043,8 +1085,8 @@
       try {
         const users = filteredActivity();
         const iso = value => { const time = activityTime(value); return time === null ? '' : new Date(time).toISOString(); };
-        const csv = exportTableCSV(['UID', 'Email', 'Last sign-in', 'Last active'],
-          users.map(user => [user.uid, user.email, iso(user.lastSignInAt), iso(user.lastActiveAt)]));
+        const csv = exportTableCSV(['Email', 'Last sign-in', 'Last active', 'UID'],
+          users.map(user => [user.email, iso(user.lastSignInAt), iso(user.lastActiveAt), user.uid]));
         downloadFile(csv, 'user-activity.csv', 'text/csv;charset=utf-8');
         recordAudit('CSV export', 'Filtered user-activity.csv', users.length);
         setStatus($('activity-status'), `Exported ${users.length} filtered activity record(s).`, 'ok');
@@ -1056,6 +1098,8 @@
       activityMutation = true;
       try {
         if (!await confirmDestructive('Delete activity record', `Delete tracking record for ${user.email || user.uid} (UID ${user.uid})? This does not delete their account or admin access.`)) return;
+        failedActivityDeletion = null;
+        $('activity-delete-retry').hidden = true;
         renderActivity();
         setStatus($('activity-status'), 'Deleting activity record…');
         await deleteUserActivity(user.uid);
@@ -1064,16 +1108,21 @@
         updateStats();
         setStatus($('activity-status'), 'Activity record deleted. Account and admin access were not changed.', 'ok');
       } catch (error) {
-        setStatus($('activity-status'), `Couldn't delete activity. ${friendlyFirestoreError(error)}`, 'error');
+        failedActivityDeletion = user;
+        setStatus($('activity-status'), `Couldn't delete activity. ${friendlyFirestoreError(error)} Use Retry activity deletion to confirm and try again.`, 'error');
         handleDataError(error);
       } finally {
         activityMutation = false;
+        $('activity-delete-retry').hidden = !failedActivityDeletion;
         const message = $('activity-status').textContent;
         const type = $('activity-status').className.includes('is-error') ? 'error' : 'ok';
         renderActivity();
         setStatus($('activity-status'), message, type);
       }
     }
+    $('activity-delete-retry').addEventListener('click', () => {
+      if (failedActivityDeletion) return removeActivity(failedActivityDeletion);
+    });
 
     /* ---------------- Backup and maintenance ---------------- */
     $('backup-download').addEventListener('click', async () => {
@@ -1089,10 +1138,9 @@
         const data = backupData(rows, users, admins, now);
         const size = downloadFile(JSON.stringify(data, null, 2), filename, 'application/json');
         recordAudit('Backup download', `${filename}; ${size} bytes`, rows.length + users.length + admins.length);
-        recordAudit('JSON export', filename, rows.length + users.length + admins.length);
         setStatus($('backup-status'), `Downloaded ${filename} (${size.toLocaleString()} bytes): ${rows.length} products, ${users.length} activity records, ${admins.length} admins.`, 'ok');
       } catch (error) {
-        setStatus($('backup-status'), `Backup failed; no file downloaded. ${error.message || friendlyFirestoreError(error)} Use Download JSON backup to retry.`, 'error');
+        setStatus($('backup-status'), `Backup failed; no file downloaded. ${error.message || friendlyFirestoreError(error)} Use Download full backup to retry.`, 'error');
         handleDataError(error);
       } finally { button.disabled = false; }
     });
@@ -1140,8 +1188,13 @@
       $('reset-orders').disabled = true;
       try {
         if (!await confirmDestructive('Reset browser-local orders', 'Remove ONLY jgv3d_orders demo orders in this browser? No cart, account, or server data will be changed.')) return;
+        let orderCount = 0;
+        try {
+          const orders = JSON.parse(localStorage.getItem('jgv3d_orders') || '[]');
+          if (Array.isArray(orders)) orderCount = orders.filter(order => order && typeof order === 'object').length;
+        } catch (error) { /* malformed demo data can still be reset */ }
         localStorage.removeItem('jgv3d_orders');
-        recordAudit('Demo orders reset', 'Removed browser-local jgv3d_orders');
+        recordAudit('Demo orders reset', 'Removed browser-local jgv3d_orders', orderCount);
         loadOrders();
         setStatus($('maintenance-status'), 'Browser-local demo orders reset. No other stored data was removed.', 'ok');
       } catch (error) {
