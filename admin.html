@@ -233,9 +233,10 @@
         location.replace('login.html');
         return;
       }
-      if (currentUid && currentUid !== user.id) {
-        // Signed-in account changed in another tab: start over cleanly.
-        location.reload();
+      if (currentUid) {
+        // Same user re-emitted (e.g. token refresh): keep the dashboard as is.
+        // A different account signed in from another tab: start over cleanly.
+        if (currentUid !== user.id) location.reload();
         return;
       }
       showGate('Checking admin access…');
@@ -698,8 +699,15 @@
       }
     }
 
-    async function removeAdmin(uid, label, adminCount) {
+    async function removeAdmin(uid, label, listedCount) {
       const self = uid === currentUid;
+      let adminCount = listedCount;
+      if (self) {
+        try {
+          const { fs, db } = fb;
+          adminCount = (await fs.getDocs(fs.collection(db, 'admins'))).size;
+        } catch (e) { /* fall back to the listed count */ }
+      }
       let question = `Remove admin access for ${label}?`;
       if (self) {
         question = adminCount <= 1
