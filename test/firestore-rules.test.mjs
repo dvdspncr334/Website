@@ -487,3 +487,93 @@ test('the real account-data client writes pass the rules', { skip }, async () =>
   const bobAsAlice = createAccountData({ db: asUser('bob'), fs, auth: { currentUser: { uid: 'alice', email: 'alice@example.com' } } });
   await assertFails(bobAsAlice.saveShipping('alice', address()));
 });
+
+/* ---------------- Guest checkout (anonymous auth) ---------------- */
+
+const asGuest = uid => env.authenticatedContext(uid, { firebase: { sign_in_provider: 'anonymous' } }).firestore();
+const guestOrder = (extra = {}) => ({
+  ...buildOrder({ items: [item('strat', 2)], shipping: address(), notes: '', email: 'buyer@example.com', guest: true, now: new Date(1700000012345) }),
+  createdAt: fs.serverTimestamp(),
+  ...extra
+});
+
+test('anonymous guests can create and read their own valid order with a contact email', { skip }, async () => {
+  const { assertSucceeds, assertFails } = rut;
+  const guest = asGuest('anon1');
+  const ref = fs.doc(guest, orderPath('anon1'));
+  await assertSucceeds(fs.setDoc(ref, guestOrder()));
+  await assertSucceeds(fs.getDoc(ref));
+  await assertSucceeds(fs.getDocs(fs.collection(guest, 'users/anon1/orders')));
+  await assertFails(fs.updateDoc(ref, { status: 'Shipped' }));
+  await assertFails(fs.deleteDoc(ref));
+  await assertFails(fs.setDoc(ref, guestOrder()), 'existing orders are not overwritten');
+});
+
+test('anonymous guest orders require guest marker and a valid bounded contact email', { skip }, async () => {
+  const { assertFails } = rut;
+  const ref = fs.doc(asGuest('anon1'), orderPath('anon1'));
+  const { guest: _omit, ...withoutMarker } = guestOrder();
+  const bad = [
+    withoutMarker,
+    guestOrder({ guest: false }),
+    guestOrder({ guest: 'true' }),
+    guestOrder({ email: '' }),
+    guestOrder({ email: 'not-an-email' }),
+    guestOrder({ email: 'a@b' }),
+    guestOrder({ email: `${'x'.repeat(250)}@example.com` }),
+    guestOrder({ email: 5 }),
+    guestOrder({ status: 'Shipped' }),
+    guestOrder({ items: [] }),
+    guestOrder({ notes: 'x'.repeat(1001) }),
+    guestOrder({ paid: true })
+  ];
+  for (const data of bad) await assertFails(fs.setDoc(ref, data));
+});
+
+test('anonymous guests cannot read or create other users\' orders, list all orders or save an address', { skip }, async () => {
+  const { assertFails } = rut;
+  await seedDoc(orderPath('alice'), { ...orderFor('alice'), createdAt: new Date() });
+  await seedDoc(orderPath('anon2'), { ...guestOrder(), createdAt: new Date() });
+  const guest = asGuest('anon1');
+  await assertFails(fs.getDoc(fs.doc(guest, orderPath('alice'))));
+  await assertFails(fs.getDoc(fs.doc(guest, orderPath('anon2'))));
+  await assertFails(fs.getDocs(fs.collection(guest, 'users/anon2/orders')));
+  await assertFails(fs.setDoc(fs.doc(guest, orderPath('anon2', 'JGV-00000001')), guestOrder({ id: 'JGV-00000001' })));
+  await assertFails(fs.getDocs(fs.collectionGroup(guest, 'orders')));
+  await assertFails(fs.setDoc(fs.doc(guest, shippingPath('anon1')), { ...address(), lastUpdated: fs.serverTimestamp() }));
+  await assertFails(fs.setDoc(fs.doc(guest, 'userActivity/anon1'), activityDoc('buyer@example.com')));
+  await assertFails(fs.getDocs(fs.collection(guest, 'admins')));
+});
+
+test('signed-in account order rules are unchanged: no guest marker and email must match the token', { skip }, async () => {
+  const { assertFails, assertSucceeds } = rut;
+  const ref = fs.doc(asUser('alice'), orderPath('alice'));
+  await assertFails(fs.setDoc(ref, orderFor('alice', { guest: true })));
+  await assertFails(fs.setDoc(ref, orderFor('alice', { guest: false })));
+  await assertFails(fs.setDoc(ref, orderFor('alice', { email: 'buyer@example.com' })));
+  await assertSucceeds(fs.setDoc(ref, orderFor('alice')));
+  await assertSucceeds(fs.setDoc(fs.doc(asUser('alice'), shippingPath('alice')), { ...address(), lastUpdated: fs.serverTimestamp() }));
+});
+
+test('admins can read, update and delete guest orders', { skip }, async () => {
+  const { assertSucceeds } = rut;
+  await seedAdmin('root');
+  await seedDoc(orderPath('anon1'), { ...guestOrder(), createdAt: new Date() });
+  const root = asUser('root');
+  const all = await assertSucceeds(fs.getDocs(fs.collectionGroup(root, 'orders')));
+  assert.equal(all.docs[0].get('guest'), true);
+  await assertSucceeds(fs.getDoc(fs.doc(root, orderPath('anon1'))));
+  await assertSucceeds(fs.updateDoc(fs.doc(root, orderPath('anon1')), statusChange('Cancelled', { cancellationReason: 'Spam' })));
+  assert.equal((await fs.getDoc(fs.doc(root, orderPath('anon1')))).get('guest'), true);
+  await assertSucceeds(fs.deleteDoc(fs.doc(root, orderPath('anon1'))));
+});
+
+test('the real account-data client places guest orders that pass the rules', { skip }, async () => {
+  const { assertSucceeds } = rut;
+  const api = createAccountData({ db: asGuest('anon1'), fs, auth: { currentUser: { uid: 'anon1', email: null, isAnonymous: true } } });
+  const order = buildOrder({ items: [item('strat')], shipping: address(), email: 'buyer@example.com', guest: true });
+  await assertSucceeds(api.placeOrder('anon1', order));
+  const [saved] = await api.listOrders('anon1');
+  assert.equal(saved.guest, true);
+  assert.equal(saved.email, 'buyer@example.com');
+});

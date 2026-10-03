@@ -42,8 +42,8 @@
     <div id="cart-total" style="margin-top:16px; font-size:1.1em; color:#ff9800;"></div>
 
     <button type="button" class="checkout-btn" id="checkout-btn" aria-describedby="checkout-signin-note">Proceed to Checkout</button>
-    <p class="cart-signin-note" id="checkout-signin-note" hidden>Sign in to place an order. <a href="login.html">Sign in or create an account</a></p>
-    <p class="cart-demo-note" id="cart-demo-note">Orders are saved to your account with your shipping details. Only you and JGV3D can see them. No payment is taken on this site.</p>
+    <p class="cart-signin-note" id="checkout-signin-note" hidden>No account needed: continue as a guest, or <a href="login.html">sign in or create an account</a> to save orders to your account.</p>
+    <p class="cart-demo-note" id="cart-demo-note">Orders are saved with your shipping details. Signed-in orders are saved to your account; guest orders can be viewed in this browser only. Only you and JGV3D can see them. No payment is taken on this site.</p>
   </div>
 
   <dialog id="checkout-dialog" class="shipping-dialog" aria-labelledby="checkout-title" aria-describedby="checkout-intro">
@@ -53,13 +53,19 @@
       <p id="checkout-order-summary" class="shipping-summary"></p>
       <div id="checkout-message" class="shipping-message" role="alert" hidden></div>
       <div id="checkout-loading" class="shipping-loading" hidden><span class="shipping-spinner" aria-hidden="true"></span><span id="checkout-loading-text">Loading…</span></div>
+      <div class="shipping-field shipping-field-wide" id="checkout-email-field" hidden>
+        <label for="checkout-contact-email">Contact email<span class="shipping-required" aria-hidden="true"> *</span></label>
+        <input type="email" id="checkout-contact-email" name="contactEmail" maxlength="254" autocomplete="email" aria-describedby="checkout-contact-email-hint checkout-contact-email-error">
+        <p class="shipping-hint" id="checkout-contact-email-hint">So JGV3D can contact you about this order. Not saved in this browser.</p>
+        <p class="shipping-error" id="checkout-contact-email-error" hidden></p>
+      </div>
       <div id="checkout-fields"></div>
       <div class="shipping-field shipping-field-wide">
         <label for="checkout-order-notes">Order notes (optional)</label>
         <textarea id="checkout-order-notes" rows="2" maxlength="1000" aria-describedby="checkout-order-notes-hint"></textarea>
         <p class="shipping-hint" id="checkout-order-notes-hint">Anything else we should know about this order.</p>
       </div>
-      <label class="shipping-checkbox" for="checkout-save-address">
+      <label class="shipping-checkbox" for="checkout-save-address" id="checkout-save-address-label">
         <input type="checkbox" id="checkout-save-address">
         Save this address for next time
       </label>
@@ -73,7 +79,7 @@
   <script type="module" src="auth-navigation.js"></script>
   <script type="module">
     import { cart } from './cart-service.js';
-    import { loadAccountData, buildOrder, validateShipping, friendlyAccountError, ORDER_NOTES_MAX } from './account-data.js';
+    import { loadAccountData, buildOrder, validateShipping, friendlyAccountError, isValidContactEmail, ORDER_NOTES_MAX } from './account-data.js';
     import { createShippingForm } from './shipping-form.js';
 
     const cartStatusEl = document.getElementById('cart-status');
@@ -98,20 +104,32 @@
     const saveAddressEl = document.getElementById('checkout-save-address');
     const checkoutCancelBtn = document.getElementById('checkout-cancel');
     const checkoutSubmitBtn = document.getElementById('checkout-submit');
+    const checkoutTitleEl = document.getElementById('checkout-title');
+    const emailFieldEl = document.getElementById('checkout-email-field');
+    const emailInput = document.getElementById('checkout-contact-email');
+    const emailErrorEl = document.getElementById('checkout-contact-email-error');
+    const saveAddressLabel = document.getElementById('checkout-save-address-label');
     const shippingForm = createShippingForm(document.getElementById('checkout-fields'), { idPrefix: 'checkout' });
 
     let cartState = cart.getState();
     let checkoutInProgress = false;
     let actionMessage = '';
-    // The open checkout: { uid, scopeKey, busy, done }. Replaced (and the
-    // dialog closed) whenever the signed-in account changes.
+    // The open checkout: { mode, uid, scopeKey, busy, done }. Replaced (and
+    // the dialog closed) whenever the signed-in account changes.
     let checkout = null;
 
-    // Orders can only be placed from a signed-in account cart.
+    // Account orders are placed from a signed-in account cart.
     function accountUid(state) {
       return state.scope === 'account' && typeof state.scopeKey === 'string' && state.scopeKey.startsWith('account:')
         ? state.scopeKey.slice('account:'.length)
         : null;
+    }
+
+    // 'account' for a signed-in account cart, 'guest' for the browser guest
+    // cart (guest checkout uses an anonymous Firebase session), else null.
+    function checkoutMode(state) {
+      if (accountUid(state)) return 'account';
+      return state.scope === 'guest' && state.scopeKey === 'guest' ? 'guest' : null;
     }
 
     function formatPrice(num) {
@@ -205,13 +223,14 @@
     }
 
     function updateCheckoutState(selectedCount) {
-      const signedIn = Boolean(accountUid(cartState));
-      const canCheckout = signedIn && selectedCount > 0 && cartState.canMutate && !cartState.saving && !checkoutInProgress;
+      const mode = checkoutMode(cartState);
+      const canCheckout = Boolean(mode) && selectedCount > 0 && cartState.canMutate && !cartState.saving && !checkoutInProgress;
       checkoutBtn.classList.toggle('is-disabled', !canCheckout);
       checkoutBtn.setAttribute('aria-disabled', canCheckout ? 'false' : 'true');
       checkoutBtn.disabled = !canCheckout;
-      checkoutBtn.title = signedIn ? '' : 'Sign in to place an order';
-      checkoutSigninNote.hidden = signedIn || cartState.scope !== 'guest';
+      checkoutBtn.textContent = mode === 'guest' ? 'Continue as Guest' : 'Proceed to Checkout';
+      checkoutBtn.title = '';
+      checkoutSigninNote.hidden = mode !== 'guest';
       if (selectedCount > 0) {
         cartSelectionMessageEl.textContent = '';
       }
@@ -362,6 +381,7 @@
       const disabled = Boolean(text);
       shippingForm.setDisabled(disabled);
       orderNotesEl.disabled = disabled;
+      emailInput.disabled = disabled;
       saveAddressEl.disabled = disabled;
       checkoutSubmitBtn.disabled = disabled;
       checkoutCancelBtn.disabled = disabled && Boolean(checkout && checkout.busy);
@@ -376,10 +396,29 @@
       checkoutSummaryEl.textContent = `${count} ${count === 1 ? 'item' : 'items'} • Total ${formatPrice(total)}`;
     }
 
-    // Never leave a previous buyer's address in the page.
+    function setEmailError(message) {
+      emailErrorEl.textContent = message || '';
+      emailErrorEl.hidden = !message;
+      if (message) emailInput.setAttribute('aria-invalid', 'true');
+      else emailInput.removeAttribute('aria-invalid');
+    }
+
+    // Guest checkout asks for a contact email and never offers to save the
+    // address (saved addresses are for signed-in accounts only).
+    function setCheckoutMode(mode) {
+      const guest = mode === 'guest';
+      checkoutTitleEl.textContent = guest ? 'Guest checkout' : 'Shipping details';
+      emailFieldEl.hidden = !guest;
+      emailInput.required = guest;
+      saveAddressLabel.hidden = guest;
+    }
+
+    // Never leave a previous buyer's address or email in the page.
     function resetCheckoutForm() {
       shippingForm.clear();
       orderNotesEl.value = '';
+      emailInput.value = '';
+      setEmailError('');
       saveAddressEl.checked = false;
       setCheckoutMessage('');
       setCheckoutLoading('');
@@ -393,16 +432,20 @@
     }
 
     async function openCheckout() {
-      const uid = accountUid(cartState);
-      if (!uid) {
-        checkoutSigninNote.hidden = false;
-        return;
-      }
-      const session = { uid, scopeKey: cartState.scopeKey, busy: false, done: false };
+      const mode = checkoutMode(cartState);
+      if (!mode) return;
+      const uid = mode === 'account' ? accountUid(cartState) : null;
+      const session = { mode, uid, scopeKey: cartState.scopeKey, busy: false, done: false };
       checkout = session;
       resetCheckoutForm();
+      setCheckoutMode(mode);
       updateCheckoutSummary();
       checkoutDialog.showModal();
+      if (mode === 'guest') {
+        setCheckoutMessage('You\'re checking out as a guest. Your address and email are saved with this order only.', 'info');
+        emailInput.focus();
+        return;
+      }
       setCheckoutLoading('Loading your saved address…');
       try {
         const api = await loadAccountData();
@@ -441,6 +484,10 @@
       if (notes.length > ORDER_NOTES_MAX) {
         setCheckoutMessage(`Order notes must be ${ORDER_NOTES_MAX} characters or fewer.`);
         orderNotesEl.focus();
+        return;
+      }
+      if (session.mode === 'guest') {
+        submitGuestCheckout(session, shipping, notes);
         return;
       }
       if (accountUid(cartState) !== session.uid || !cartState.canMutate) {
@@ -518,12 +565,121 @@
       }, 1500);
     }
 
-    checkoutBtn.addEventListener('click', () => {
-      if (checkoutInProgress || !cartState.canMutate || cartState.saving) return;
-      if (!accountUid(cartState)) {
-        checkoutSigninNote.hidden = false;
+    // Guest checkout: the order is placed under an anonymous Firebase
+    // session (users/{anonUid}/orders) from the browser guest cart. Only the
+    // ordered items are then removed from the guest cart; nothing is ever
+    // copied into an account cart, and the address/email are not stored in
+    // this browser.
+    async function submitGuestCheckout(session, shipping, notes) {
+      const contactEmail = emailInput.value.trim();
+      if (!isValidContactEmail(contactEmail)) {
+        setEmailError('Enter a valid email address so we can contact you about this order.');
+        setCheckoutMessage('Please fix the highlighted fields.');
+        emailInput.focus();
         return;
       }
+      setEmailError('');
+      if (cartState.scopeKey !== session.scopeKey || !cartState.canMutate) {
+        setCheckoutMessage('Your cart isn\'t ready or your sign-in changed. Close this form and try again.');
+        return;
+      }
+      const items = selectedCartItems();
+      if (!items.length) {
+        setCheckoutMessage('Select at least one item to checkout.');
+        return;
+      }
+
+      session.busy = true;
+      setCheckoutMessage('');
+      setCheckoutLoading('Starting guest checkout…');
+      let guestUid;
+      try {
+        const authModule = await import('./auth-firebase.js');
+        try {
+          guestUid = (await authModule.signInAsGuest()).id;
+        } catch (error) {
+          throw Object.assign(new Error(authModule.friendlyGuestError(error)), { name: 'AccountDataError', code: 'guest-auth' });
+        }
+        // Wait until auth listeners report the guest session before using it.
+        await new Promise((resolve, reject) => {
+          let unsubscribe = null;
+          let done = false;
+          const finish = (error) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            if (unsubscribe) unsubscribe();
+            if (error) reject(error); else resolve();
+          };
+          const timer = setTimeout(() => finish(Object.assign(new Error('Guest sign-in is taking too long. Please try again.'), { name: 'AccountDataError', code: 'guest-auth' })), 10000);
+          unsubscribe = authModule.onSessionChanged(user => {
+            if (user && user.id === guestUid) finish();
+          });
+          if (done && unsubscribe) unsubscribe();
+        });
+      } catch (error) {
+        if (checkout !== session) return;
+        session.busy = false;
+        setCheckoutLoading('');
+        setCheckoutMessage(`Your order was not placed: ${friendlyAccountError(error)} Your cart was not changed.`);
+        return;
+      }
+      if (checkout !== session) return;
+
+      setCheckoutLoading('Placing your order…');
+      let order;
+      try {
+        const api = await loadAccountData();
+        if (api.currentUid() !== guestUid || !api.isAnonymous() || cartState.scopeKey !== session.scopeKey) {
+          throw Object.assign(new Error('Your sign-in changed. Nothing was ordered — please try again.'), { name: 'AccountDataError', code: 'stale-user' });
+        }
+        for (let attempt = 0; ; attempt += 1) {
+          order = buildOrder({ items, shipping, notes, email: contactEmail, guest: true, now: new Date(Date.now() + attempt) });
+          try {
+            await api.placeOrder(guestUid, order);
+            break;
+          } catch (error) {
+            if (!error || error.code !== 'order-exists' || attempt >= 2 || checkout !== session) throw error;
+          }
+        }
+      } catch (error) {
+        if (checkout !== session) return;
+        session.busy = false;
+        setCheckoutLoading('');
+        setCheckoutMessage(`Your order was not placed: ${friendlyAccountError(error)} Your cart was not changed.`);
+        return;
+      }
+
+      session.done = true;
+      checkoutInProgress = true;
+      renderCart();
+      const warnings = [];
+      setCheckoutLoading('Updating your cart…');
+      try {
+        if (cartState.scopeKey !== 'guest') throw new Error('your cart changed');
+        await cart.removeItems(items.map(item => item.id));
+      } catch (error) {
+        warnings.push(`The ordered items couldn't be removed from your cart (${(error && error.message) || 'unknown error'}). Remove them manually to avoid ordering twice.`);
+      }
+      checkoutInProgress = false;
+      session.busy = false;
+      setCheckoutLoading('');
+      shippingForm.setDisabled(true);
+      orderNotesEl.disabled = true;
+      emailInput.disabled = true;
+      checkoutCancelBtn.hidden = true;
+      checkoutSubmitBtn.textContent = 'View My Orders';
+      checkoutSubmitBtn.focus();
+      setCheckoutMessage(`Thank you! Guest order ${order.id} was placed. We'll contact you at ${contactEmail}. `
+        + `Please save your order number (${order.id}). You can view this order under My Orders in this browser while your guest session lasts; `
+        + `clearing browser data removes that access, so contact us with your order number if you need help.`
+        + (warnings.length ? ` ${warnings.join(' ')}` : ''), warnings.length ? 'error' : 'success');
+      renderCart();
+    }
+
+    checkoutBtn.addEventListener('click', () => {
+      if (checkoutInProgress || !cartState.canMutate || cartState.saving) return;
+      if (!checkoutMode(cartState)) return;
       if (cartState.items.length === 0) return;
       if (selectedCartItems().length === 0) {
         cartSelectionMessageEl.textContent = 'Select at least one item to checkout.';
@@ -535,6 +691,7 @@
     });
 
     checkoutForm.addEventListener('submit', submitCheckout);
+    emailInput.addEventListener('input', () => setEmailError(''));
     checkoutCancelBtn.addEventListener('click', () => {
       if (checkout && checkout.busy) return;
       closeCheckout();

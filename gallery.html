@@ -71,15 +71,28 @@
     </div>
   </div>
 
+  <script src="ui-prefs.js"></script>
   <script>
     /* ---------- State and Constants ---------- */
     const CATEGORY_KEY = 'jgv3d_gallery_category';
     const SUBCATEGORY_KEY = 'jgv3d_gallery_subcategory';
     const IMAGE_SELECTION_KEY = 'jgv3d_gallery_image_selection';
     
+    // Photo choices and filters are remembered per cart scope (see
+    // ui-prefs.js): guests keep the original browser keys, each signed-in
+    // account gets its own namespaced keys, and nothing is copied between
+    // them. Anonymous guest-checkout sessions use the guest scope.
+    const prefs = window.JGV3DPrefs.createScopedPrefs({
+      guestKeys: {
+        gallery_images: IMAGE_SELECTION_KEY,
+        gallery_category: CATEGORY_KEY,
+        gallery_subcategory: SUBCATEGORY_KEY
+      }
+    });
+
     let allItems = [];
-    let currentCategory = localStorage.getItem(CATEGORY_KEY) || 'all';
-    let currentSubcategory = localStorage.getItem(SUBCATEGORY_KEY) || 'all';
+    let currentCategory = prefs.getString('gallery_category') || 'all';
+    let currentSubcategory = prefs.getString('gallery_subcategory') || 'all';
     let currentSort = 'default';
     let searchQuery = '';
 
@@ -89,13 +102,30 @@
     const searchBox = document.getElementById('search-box');
     const sortSelect = document.getElementById('sort-select');
 
+    // The shared cart service tells us whether this is the guest or which
+    // signed-in account (same singleton the header cart badge uses).
+    import('./cart-service.js').then(({ cart }) => {
+      cart.subscribe(state => {
+        if (!prefs.setScope(state.scopeKey)) return;
+        currentCategory = prefs.getString('gallery_category') || 'all';
+        currentSubcategory = prefs.getString('gallery_subcategory') || 'all';
+        if (allItems.length) {
+          pruneSavedPrefs();
+          updateSubcategoryFilter();
+          renderGallery();
+        }
+      });
+    }).catch(error => {
+      console.error('Sign-in state unavailable; gallery choices won\'t be remembered:', error);
+    });
+
     /* ---------- Image Selection Persistence ---------- */
     function getSavedImageSelections() {
-      try {
-        return JSON.parse(localStorage.getItem(IMAGE_SELECTION_KEY)) || {};
-      } catch (e) {
-        return {};
-      }
+      return prefs.getMap('gallery_images');
+    }
+
+    function pruneSavedPrefs() {
+      prefs.pruneMap('gallery_images', allItems.map(getItemKey).filter(Boolean));
     }
 
     function getItemKey(item) {
@@ -106,10 +136,9 @@
       const key = getItemKey(item);
       if (!key) return;
       const selections = getSavedImageSelections();
+      delete selections[key];
       selections[key] = index;
-      try {
-        localStorage.setItem(IMAGE_SELECTION_KEY, JSON.stringify(selections));
-      } catch (e) {}
+      prefs.setMap('gallery_images', selections);
     }
 
     function getSavedImageIndex(item, maxIndex) {
@@ -335,6 +364,7 @@
           return;
         }
 
+        pruneSavedPrefs();
         generateCategoryButtons();
         updateSubcategoryFilter();
         renderGallery();
@@ -396,15 +426,15 @@
     function filterByCategory(category) {
       currentCategory = category;
       currentSubcategory = 'all';
-      localStorage.setItem(CATEGORY_KEY, category);
-      localStorage.setItem(SUBCATEGORY_KEY, 'all');
+      prefs.setString('gallery_category', category);
+      prefs.setString('gallery_subcategory', 'all');
       updateSubcategoryFilter();
       renderGallery();
     }
 
     function filterBySubcategory() {
       currentSubcategory = subcategoryFilter.value;
-      localStorage.setItem(SUBCATEGORY_KEY, currentSubcategory);
+      prefs.setString('gallery_subcategory', currentSubcategory);
       renderGallery();
     }
 

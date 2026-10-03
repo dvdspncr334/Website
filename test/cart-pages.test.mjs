@@ -44,11 +44,26 @@ test('checkout saves the order to the signed-in account before removing cart ite
   assert.doesNotMatch(cart, /localStorage|jgv3d_orders|order-utils\.js/, 'orders and addresses are never stored in the browser');
 });
 
-test('guests cannot check out and are prompted to sign in', () => {
+test('guests can continue as guest or sign in; guest checkout uses an anonymous session and the guest cart only', () => {
   const cart = read('cart.html');
-  assert.match(cart, /id="checkout-signin-note"[^>]*hidden>Sign in to place an order\. <a href="login\.html">/);
-  assert.match(cart, /const canCheckout = signedIn && /);
-  assert.match(cart, /if \(!accountUid\(cartState\)\) \{\s*checkoutSigninNote\.hidden = false;/);
+  assert.match(cart, /id="checkout-signin-note"[^>]*hidden>No account needed: continue as a guest, or <a href="login\.html">/);
+  assert.match(cart, /const canCheckout = Boolean\(mode\) && /);
+  assert.match(cart, /checkoutBtn\.textContent = mode === 'guest' \? 'Continue as Guest' : 'Proceed to Checkout'/);
+  // Guest checkout: anonymous sign-in, contact email, order saved before the
+  // guest cart items are removed; never an account cart or browser storage.
+  const guest = cart.slice(cart.indexOf('async function submitGuestCheckout'));
+  const signIn = guest.indexOf('authModule.signInAsGuest()');
+  const place = guest.indexOf('await api.placeOrder(guestUid, order);');
+  const remove = guest.indexOf("await cart.removeItems(items.map");
+  assert.ok(signIn > 0 && place > signIn && remove > place);
+  assert.match(guest, /if \(!isValidContactEmail\(contactEmail\)\)/);
+  assert.match(guest, /buildOrder\(\{ items, shipping, notes, email: contactEmail, guest: true,/);
+  assert.match(guest, /if \(cartState\.scopeKey !== 'guest'\) throw/);
+  assert.doesNotMatch(guest, /saveShipping/, 'guest addresses are never saved');
+  assert.match(guest, /Please save your order number/);
+  assert.match(guest, /clearing browser data removes that access/);
+  assert.match(cart, /saveAddressLabel\.hidden = guest;/);
+  assert.match(cart, /id="checkout-contact-email" name="contactEmail" maxlength="254"/);
 });
 
 test('checkout dialog is a native, labelled dialog with save-address opt-in and cancel', () => {
@@ -68,7 +83,7 @@ test('orders pages read only the signed-in account orders from Firestore', () =>
   for (const page of ['orders.html', 'order-details.html']) {
     const html = read(page);
     assert.match(html, /import \{ loadAccountData[^}]*\} from '\.\/account-data\.js'/, page);
-    assert.match(html, /api\.onUserChanged\(/, page);
+    assert.match(html, /api\.onSessionChanged\(/, page);
     assert.doesNotMatch(html, /localStorage|jgv3d_orders|order-utils\.js/, page);
   }
   assert.match(read('orders.html'), /api\.subscribeOrders\(uid,/);

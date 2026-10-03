@@ -73,14 +73,14 @@ Visit `https://dvdspncr334.github.io/login.html` and:
 - The Firebase SDK loads from the CDN, so if gstatic.com is unreachable the cart (guest carts included) shows an error with Retry instead of possibly showing the wrong cart.
 - **Old carts:** carts saved before this change under the unowned key `jgv3d_cart` (with `jgv3d_cart_selection`) are moved **once into the guest cart only** and never into any account. Those old carts had no owner, so on a shared browser the moved guest cart may contain items added by anyone who used that browser before.
 
-## Orders and shipping addresses (signed-in buyers only)
+## Orders and shipping addresses
 
-**Guests can't place orders.** On the cart page, **Proceed to Checkout** is disabled for guests, and a "Sign in to place an order" message with a link to `login.html` is shown instead. Guest carts still work for browsing.
+Signed-in buyers check out from their account cart. Guests can **Continue as Guest** without creating an account (see *Guest checkout* below). Saved addresses are for signed-in accounts only.
 
 | Data | Firestore path | Who can read | Who can write |
 | --- | --- | --- | --- |
 | Saved shipping address | `users/{uid}/profile/shipping` → `{ firstName, lastName, streetAddress1, streetAddress2, city, state, postalCode, country, phone, deliveryNotes, lastUpdated }` | That user, and admins | That user only (save/delete) |
-| Orders | `users/{uid}/orders/{orderId}` → `{ id, date, createdAt, status, items[{id,title,img,qty,price}], total, shipping{…address}, notes, email }`, with optional lifecycle metadata | That user, and admins (all users' orders) | That user can **create** only. Admins can update lifecycle status/cancellation reason or permanently delete exact order documents. |
+| Orders | `users/{uid}/orders/{orderId}` → `{ id, date, createdAt, status, items[{id,title,img,qty,price}], total, shipping{…address}, notes, email }` (guest orders also have `guest: true`), with optional lifecycle metadata | That user, and admins (all users' orders) | That user can **create** only. Admins can update lifecycle status/cancellation reason or permanently delete exact order documents. |
 
 - **Checkout:** clicking **Proceed to Checkout** opens a *Shipping details* dialog. It is filled in from the saved address if there is one. Required fields: first/last name, street address, city, state/region, postal code and country. Phone, apartment/suite, delivery notes and order notes are optional. All values are trimmed. **Place Order** saves the order to Firestore first (status `In Queue`, order number `JGV-########`), then removes the ordered items from the cart and goes to *My Orders*. If saving fails (permission denied, offline, …) the dialog stays open with an error, and the cart is not changed. Escape or **Cancel** closes the dialog without ordering.
 - **"Save this address for next time"** is unticked by default. The address is saved to the account only when it is ticked.
@@ -88,6 +88,30 @@ Visit `https://dvdspncr334.github.io/login.html` and:
 - **Privacy:** each buyer sees only their own orders and address. Admins can read every order and address. Addresses and orders are **never stored in browser storage** (Firestore uses its in-memory cache). On sign-out or an account switch, the checkout dialog closes and the Settings form, orders list and order details are cleared, so the next person never sees the previous account's data.
 - **No payment is taken.** Item prices and totals come from the buyer's browser (the same values the cart shows), so confirm them with the buyer before charging. The rules check the order's fields, address and item count, but Firestore rules can't check each item in a list, so item details and the total aren't verified on the server.
 - **Old demo orders:** orders created before this change were saved only in the buyer's browser (`localStorage` key `jgv3d_orders`). They are left untouched and are **not** imported into Firestore. *My Orders* now shows only account orders; the admin *Orders* tab still lists the old demo orders stored in the admin's own browser, in a separately labelled table.
+
+## Guest checkout (no account needed)
+
+Guest checkout uses **Firebase Anonymous Authentication**. When a guest clicks **Continue as Guest** and places an order, the site signs them in anonymously and saves the order at `users/{anonymousUid}/orders/{orderId}`. The same owner-only rules apply as for accounts, and admins see the order through the existing collection-group query. Orders are **not** publicly readable or writable.
+
+- **⚠️ Required one-time setup:** Firebase Console → **Authentication → Sign-in method → Add new provider → Anonymous → Enable → Save**. Until you do this, guest checkout shows "Guest checkout isn't enabled on this site yet…" (`auth/operation-not-allowed`). The guest's cart isn't changed and nothing is ordered.
+- **Form:** the same shipping fields, plus a required **contact email** so you can reach the buyer. The email is checked in the browser and in the rules: 6–254 characters and a `name@domain.tld` shape. There is no "save this address" option, and guest shipping details and email are **never stored in browser storage**.
+- **Cart:** the order is built from the selected items in the browser **guest cart**. After the order is saved, only those items are removed from the guest cart. Nothing is ever merged into an account cart.
+- **Anonymous sessions are not accounts.** Navigation still shows **Login**, and guests keep using the guest cart and guest shop/gallery selections. They don't see Account settings or a saved address, no `userActivity` record is written (the rules need an account email), and they can never pass admin checks.
+- **Confirmation & history:** after ordering, the guest sees the order number and contact email, plus a reminder to save the order number. *My Orders* shows guest orders placed **in this browser while the anonymous session lasts**. Clearing browser data, or signing in to an account (which replaces the anonymous session), removes that access. The guest can still contact you with the order number. The login page warns guests about this.
+- **No account linking:** "Create an account" links are offered, but guest orders are **not** moved into a new account (`linkWithCredential` isn't implemented).
+- **Admin:** guest orders show a **Guest** badge and the guest's contact email in the Orders tab and in the details dialog. Status updates, cancellation and deletion work the same as for account orders.
+- **Rules:** for anonymous users (`request.auth.token.firebase.sign_in_provider == 'anonymous'`), an order must have `guest == true` and a valid contact email. Account orders must have **no** `guest` field, and `email` must still match the account's token email (unchanged). Anonymous users can't save a `profile/shipping` address.
+- **Spam / abuse:** guest checkout makes it easier to submit junk orders, because anyone can get an anonymous session. The existing limits still apply (1–50 items, quantity/price/total bounds, field lengths, initial status `In Queue`, no overwriting), but **there is no rate limiting or bot protection**. A recommended follow-up is **Firebase App Check** (reCAPTCHA Enterprise) enforced for Firestore and Authentication. You can delete junk orders from the admin Orders tab. Firebase can also auto-clean unused anonymous accounts (Authentication → Settings).
+
+## Remembered shop and gallery selections
+
+The shop remembers each product's selected options/color and custom-color drafts, plus the chosen category and subcategory. The gallery remembers the photo selected for each multi-photo item, plus the category and subcategory. These are non-sensitive UI preferences, handled in `ui-prefs.js`:
+
+- **Guests** (including anonymous guest-checkout sessions) use the same browser keys as before (`jgv3d_shop_selected_options`, `jgv3d_custom_note_drafts`, `jgv3d_last_category`, `jgv3d_last_subcategory`, `jgv3d_gallery_image_selection`, `jgv3d_gallery_category`, `jgv3d_gallery_subcategory`).
+- **Signed-in accounts** use separate `localStorage` keys in **this browser** namespaced by uid: `jgv3d_prefs_v1:{uid}:{name}`. Choices survive reloads and page changes. Each account reads only its own keys. Nothing is copied between guest and account, or between accounts. On an account switch the page drops the previous scope's choices and re-renders with the new account's choices.
+- On sign-out the account's keys are **kept**, so the choices return on the next sign-in in this browser. They are not synced to other devices. Custom-color drafts are the user's own text, so don't type anything sensitive in them.
+- Account maps are capped at 200 entries, and entries for products/gallery items that no longer exist are pruned. Storage errors (full/blocked) are ignored, and the page keeps working without remembering choices.
+- While sign-in is still being checked (or if Firebase can't load), choices are kept in memory only for that page.
 
 ## Remaining Firebase Console / deployment steps (required for account carts)
 
@@ -211,7 +235,7 @@ The *Orders* tab keeps real account orders separate from old browser demos:
 
 ### Not implemented (out of scope)
 
-- No full user-account list or account management (only the minimal `userActivity` records above), no payment processing/refunds, no shipping labels or notifications, no inventory adjustments, and no guest checkout.
+- No full user-account list or account management (only the minimal `userActivity` records above), no payment processing/refunds, no shipping labels or notifications, no inventory adjustments, and no linking of guest orders to accounts.
 - No server-side "look up any Firebase Auth user by email": that needs the Admin SDK on a server. Lookup by email only finds users with a `userActivity` record.
 
 ## Developer checks

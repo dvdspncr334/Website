@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   SHIPPING_FIELD_NAMES, normalizeShipping, validateShipping, hasShippingAddress, formatShippingLines, summarizeShipping,
   createOrderId, buildOrder, normalizeOrder, sortOrdersNewestFirst, isValidOrderReference, friendlyAccountError,
-  createAccountData, AccountDataError
+  createAccountData, AccountDataError, isValidContactEmail
 } from '../account-data.js';
 
 const address = (extra = {}) => ({
@@ -253,4 +253,33 @@ test('unsubscribing/disposal suppresses already queued listener events and error
   api.subscribeOrders('alice', () => count++, () => count++);
   api.dispose(); next({ docs: [] }); error(new Error('ignored'));
   assert.equal(count, 0);
+});
+
+test('guest orders need a valid contact email and carry the guest marker; account orders do not', () => {
+  const now = new Date(1700000012345);
+  const guest = buildOrder({ items: [item('strat')], shipping: address(), email: ' buyer@example.com ', guest: true, now });
+  assert.equal(guest.guest, true);
+  assert.equal(guest.email, 'buyer@example.com');
+  assert.equal('guest' in buildOrder({ items: [item('strat')], shipping: address(), email: 'a@b.co', now }), false);
+  for (const email of ['', 'not-an-email', 'a@b', 'a b@example.com', `${'x'.repeat(250)}@example.com`]) {
+    assert.equal(isValidContactEmail(email), false, email);
+    assert.throws(() => buildOrder({ items: [item('strat')], shipping: address(), email, guest: true, now }), { code: 'invalid-email' });
+  }
+  assert.equal(isValidContactEmail('first.last+tag@shop.example.co.uk'), true);
+  assert.equal(normalizeOrder({ ...guest }, guest.id).guest, true);
+  assert.equal(normalizeOrder({ ...guest, guest: 'yes' }, guest.id).guest, false);
+});
+
+test('anonymous guest sessions can place and read their own orders but never save an address', async () => {
+  const { fs, docs, calls } = fakeFirestore();
+  const auth = { currentUser: { uid: 'anon1', email: null, isAnonymous: true } };
+  const api = createAccountData({ db: {}, fs, auth });
+  assert.equal(api.isAnonymous(), true);
+  await assert.rejects(api.saveShipping('anon1', address()), { code: 'guest-session' });
+  const order = buildOrder({ items: [item('strat')], shipping: address(), email: 'buyer@example.com', guest: true });
+  await api.placeOrder('anon1', order);
+  assert.deepEqual(docs.get(`users/anon1/orders/${order.id}`), { ...order, createdAt: 'SERVER_TIME' });
+  assert.equal((await api.listOrders('anon1'))[0].guest, true);
+  await assert.rejects(api.listOrders('alice'), { code: 'stale-user' });
+  assert.ok(calls.every(call => call[1].startsWith('users/anon1/orders')));
 });

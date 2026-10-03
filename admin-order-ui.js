@@ -127,6 +127,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     badge.textContent = status;
     return badge;
   };
+  const guestBadge = () => span('Guest', 'admin-guest-badge');
   function message(text, error = false) {
     $('account-orders-status').textContent = text;
     $('account-orders-status').className = `admin-status ${error ? 'is-error' : ''}`;
@@ -201,6 +202,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
       identity.append(span(order.id, 'admin-order-id'), pathControl(order.path));
       const customer = cell('', 'admin-order-customer', 'Customer');
       const shipTo = shipToSummary(order.shipping);
+      if (order.guest) customer.append(guestBadge());
       customer.append(span(order.email || `UID ${order.uid}`, 'admin-order-email'),
         span(shipTo ? `Ship to: ${shipTo}` : 'Ship to: (no address saved)', 'admin-order-ship'));
       const status = cell('', 'admin-order-status-cell', 'Status');
@@ -329,12 +331,15 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     };
     fact('Placed', formatTime(order.date));
     fact('Status', statusBadge(order.status));
+    if (order.guest) fact('Checkout', guestBadge(), 'Guest (no account)');
     fact('Items', plural(itemCount(order), 'item'));
     fact('Total', span(formatOrderMoney(order.total), 'admin-money'));
     const grid = document.createElement('div');
     grid.className = 'admin-order-info';
     const customer = document.createElement('section');
-    customer.append(heading('Customer'), text(`Customer email: ${order.email || '(not saved)'}`),
+    customer.append(heading('Customer'), text(order.guest
+      ? `Guest contact email: ${order.email || '(not saved)'}`
+      : `Customer email: ${order.email || '(not saved)'}`),
       text(`Order notes: ${order.notes || '(none)'}`),
       text(`Cancellation reason: ${order.cancellationReason || '(none recorded)'}`));
     const shipping = document.createElement('section');

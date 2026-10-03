@@ -5,7 +5,10 @@ rules_version = '2';
 // Only the signed-in owner can read or write their own cart at
 // users/{uid}/carts/current. The owner can also read/write their saved
 // shipping address (users/{uid}/profile/shipping) and create/read their own
-// orders (users/{uid}/orders/{orderId}). Admins (users with an admins/{uid}
+// orders (users/{uid}/orders/{orderId}). Guest checkout uses Firebase
+// Anonymous Authentication: an anonymous user owns users/{anonUid}/orders
+// exactly like an account, must mark the order `guest: true` with a valid
+// contact email, and cannot save a shipping address. Admins (users with an admins/{uid}
 // document) can update order status/cancellation metadata and delete orders,
 // read every order and saved address, manage the admins list and read/delete
 // userActivity. Everything else is denied by default.
@@ -96,9 +99,30 @@ service cloud.firestore {
         && isText(a.deliveryNotes, 0, 500);
     }
 
+    // Guest checkout signs buyers in with Firebase Anonymous Authentication.
+    function isAnonymousUser() {
+      return request.auth != null
+        && request.auth.token.get('firebase', {}).get('sign_in_provider', '') == 'anonymous';
+    }
+
+    // Kept in sync with isValidContactEmail() in account-data.js (the client
+    // trims the email before validating and storing it; rules do not trim).
+    function isValidContactEmail(value) {
+      return isText(value, 6, 254)
+        && value.matches('[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}');
+    }
+
+    // Signed-in accounts: email must be the account email and there is no
+    // guest marker. Anonymous guests: guest == true and a valid contact email.
+    function isValidOrderContact(data) {
+      return isAnonymousUser()
+        ? (data.get('guest', false) == true && isValidContactEmail(data.email))
+        : (!data.keys().hasAny(['guest']) && data.email == request.auth.token.get('email', ''));
+    }
+
     function isValidOrder(orderId, data) {
       return data.keys().hasAll(['id', 'date', 'createdAt', 'status', 'items', 'total', 'shipping', 'notes', 'email'])
-        && data.keys().hasOnly(['id', 'date', 'createdAt', 'status', 'items', 'total', 'shipping', 'notes', 'email'])
+        && data.keys().hasOnly(['id', 'date', 'createdAt', 'status', 'items', 'total', 'shipping', 'notes', 'email', 'guest'])
         && data.id == orderId
         && orderId.matches('JGV-[0-9]{8}')
         && isText(data.date, 10, 40)
@@ -112,13 +136,13 @@ service cloud.firestore {
                                          'state', 'postalCode', 'country', 'phone', 'deliveryNotes'])
         && isValidAddress(data.shipping)
         && isText(data.notes, 0, 1000)
-        && data.email == request.auth.token.get('email', '');
+        && isValidOrderContact(data);
     }
 
     // One saved shipping address per user.
     match /users/{uid}/profile/shipping {
       allow read: if isOwner(uid) || isAdmin();
-      allow create, update: if isOwner(uid)
+      allow create, update: if isOwner(uid) && !isAnonymousUser()
         && request.resource.data.keys().hasOnly(['firstName', 'lastName', 'streetAddress1', 'streetAddress2', 'city',
                                                  'state', 'postalCode', 'country', 'phone', 'deliveryNotes', 'lastUpdated'])
         && isValidAddress(request.resource.data)

@@ -8,6 +8,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  signInAnonymously,
   signOut as firebaseSignOut
 } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js';
 import { firebaseConfig } from './firebase-config.js';
@@ -15,23 +16,39 @@ import { firebaseConfig } from './firebase-config.js';
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-function toUser(u) {
+// Anonymous (guest checkout) sessions are not accounts: onUserChanged and
+// getSession report them as signed out, so navigation, account carts,
+// saved addresses, activity tracking and admin checks treat them as guests.
+// Only pages that show guest orders use onSessionChanged.
+function toSessionUser(u) {
   if (!u) return null;
   return {
     id: u.uid,
     email: u.email || '',
     name: u.displayName || '',
     photoURL: u.photoURL || '',
-    provider: (u.providerData[0] && u.providerData[0].providerId) || 'password'
+    provider: u.isAnonymous ? 'anonymous' : ((u.providerData && u.providerData[0] && u.providerData[0].providerId) || 'password'),
+    isAnonymous: Boolean(u.isAnonymous)
   };
 }
 
-// Subscribe to sign-in state changes. Returns an unsubscribe function.
+function toUser(u) {
+  return u && !u.isAnonymous ? toSessionUser(u) : null;
+}
+
+// Subscribe to account sign-in changes (anonymous guests count as signed
+// out). Returns an unsubscribe function.
 export function onUserChanged(callback) {
   return onAuthStateChanged(auth, (u) => callback(toUser(u)));
 }
 
-// One-time check of the current user.
+// Like onUserChanged, but also reports anonymous guest-checkout sessions
+// (with isAnonymous: true).
+export function onSessionChanged(callback) {
+  return onAuthStateChanged(auth, (u) => callback(toSessionUser(u)));
+}
+
+// One-time check of the current account user (null for anonymous guests).
 export function getSession() {
   return new Promise((resolve) => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -39,6 +56,18 @@ export function getSession() {
       resolve(toUser(u));
     });
   });
+}
+
+// Starts (or reuses) an anonymous Firebase session for guest checkout.
+// Never replaces a signed-in account.
+export async function signInAsGuest() {
+  const current = auth.currentUser;
+  if (current && current.isAnonymous) return toSessionUser(current);
+  if (current) {
+    throw Object.assign(new Error('Already signed in to an account.'), { code: 'auth/already-signed-in' });
+  }
+  const result = await signInAnonymously(auth);
+  return toSessionUser(result.user);
 }
 
 export async function signInWithGoogle() {
@@ -92,5 +121,18 @@ export function friendlyError(error) {
       return 'Sign-in isn\'t enabled for this domain yet. Please contact support.';
     default:
       return 'Something went wrong. Please try again.';
+  }
+}
+
+// Messages for starting a guest-checkout (anonymous) session.
+export function friendlyGuestError(error) {
+  switch (error && error.code) {
+    case 'auth/operation-not-allowed':
+    case 'auth/admin-restricted-operation':
+      return 'Guest checkout isn\'t enabled on this site yet (the shop owner needs to turn on anonymous sign-in). Please sign in or create an account to order, or contact us.';
+    case 'auth/already-signed-in':
+      return 'You\'re signed in to an account. Use your account cart to check out.';
+    default:
+      return friendlyError(error) || 'Something went wrong. Please try again.';
   }
 }

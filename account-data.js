@@ -31,6 +31,9 @@ export const COUNTRY_SUGGESTIONS = Object.freeze([
 export const ORDER_STATUSES = Object.freeze(['In Queue', 'In Progress', 'Shipped', 'Completed', 'Cancelled']);
 export const ORDER_NOTES_MAX = 1000;
 export const ORDER_MAX_ITEMS = 50;
+export const CONTACT_EMAIL_MAX = 254;
+// Kept in sync with isValidContactEmail() in firestore.rules.
+const CONTACT_EMAIL_RE = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}$/;
 const ORDER_ID_RE = /^JGV-[0-9]{8}$/;
 const DOC_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -113,9 +116,15 @@ function isValidOrderItem(item) {
     && Number.isFinite(Number(item.price)) && Number(item.price) >= 0 && Number(item.price) <= 100000;
 }
 
+export function isValidContactEmail(value) {
+  const email = clean(value);
+  return email.length >= 6 && email.length <= CONTACT_EMAIL_MAX && CONTACT_EMAIL_RE.test(email);
+}
+
 // Builds the order document written to users/{uid}/orders/{order.id}
-// (createdAt is added as a server timestamp when it is saved).
-export function buildOrder({ items, shipping, notes = '', email = '', now = new Date() }) {
+// (createdAt is added as a server timestamp when it is saved). Guest
+// (anonymous) orders carry `guest: true` and a required contact email.
+export function buildOrder({ items, shipping, notes = '', email = '', guest = false, now = new Date() }) {
   const list = Array.isArray(items) ? items : [];
   if (!list.length) throw new AccountDataError('invalid-order', 'Select at least one item to order.');
   if (list.length > ORDER_MAX_ITEMS) throw new AccountDataError('invalid-order', `An order can contain at most ${ORDER_MAX_ITEMS} different items.`);
@@ -125,9 +134,12 @@ export function buildOrder({ items, shipping, notes = '', email = '', now = new 
   if (Object.keys(errors).length) throw new AccountDataError('invalid-shipping', 'Please complete the required shipping fields.');
   const orderNotes = clean(notes);
   if (orderNotes.length > ORDER_NOTES_MAX) throw new AccountDataError('invalid-order', `Order notes must be ${ORDER_NOTES_MAX} characters or fewer.`);
+  if (guest && !isValidContactEmail(email)) {
+    throw new AccountDataError('invalid-email', 'Please enter a valid contact email so we can reach you about your order.');
+  }
   const orderItems = list.map(normalizeOrderItem);
   const total = Math.round(orderItems.reduce((sum, item) => sum + item.price * item.qty, 0) * 100) / 100;
-  return {
+  const order = {
     id: createOrderId(now.getTime()),
     date: now.toISOString(),
     status: 'In Queue',
@@ -137,6 +149,8 @@ export function buildOrder({ items, shipping, notes = '', email = '', now = new 
     notes: orderNotes,
     email: clean(email)
   };
+  if (guest) order.guest = true;
+  return order;
 }
 
 function toIsoDate(data) {
@@ -163,6 +177,7 @@ export function normalizeOrder(data, docId = '') {
     shipping: normalizeShipping(source.shipping),
     notes: clean(source.notes),
     email: clean(source.email),
+    guest: source.guest === true,
     cancellationReason: clean(source.cancellationReason)
   };
 }
@@ -239,6 +254,7 @@ export function createAccountData({ db, fs, auth, onUserChanged, onAuthStateChan
 
   const currentUid = () => (auth.currentUser ? auth.currentUser.uid : null);
   const currentEmail = () => (auth.currentUser && auth.currentUser.email) || '';
+  const isAnonymous = () => Boolean(auth.currentUser && auth.currentUser.isAnonymous);
 
   function requireUser(uid) {
     if (!uid || typeof uid !== 'string' || uid.includes('/') || currentUid() !== uid) {
@@ -256,6 +272,9 @@ export function createAccountData({ db, fs, auth, onUserChanged, onAuthStateChan
 
   async function saveShipping(uid, raw) {
     requireUser(uid);
+    if (isAnonymous()) {
+      throw new AccountDataError('guest-session', 'Saved addresses are only available for signed-in accounts.');
+    }
     const token = session.capture(uid);
     const shipping = normalizeShipping(raw);
     if (Object.keys(validateShipping(shipping)).length) {
@@ -336,19 +355,25 @@ export function createAccountData({ db, fs, auth, onUserChanged, onAuthStateChan
       snap => snap.exists() ? normalizeOrder(snap.data(), snap.id || id) : null, onNext, onError);
   }
 
-  return { currentUid, currentEmail, loadShipping, saveShipping, deleteShipping, placeOrder, listOrders, getOrder,
+  return { currentUid, currentEmail, isAnonymous, loadShipping, saveShipping, deleteShipping, placeOrder, listOrders, getOrder,
     subscribeOrders, subscribeOrder, invalidate: session.invalidate, dispose: session.dispose };
 }
 
 // Loads Firebase Auth and Firestore once, on demand. Firestore uses its
 // default in-memory cache, so nothing is persisted in this browser.
+// The session tracks every Firebase user, including anonymous guest-checkout
+// sessions; onUserChanged reports signed-in accounts only, onSessionChanged
+// also reports anonymous guests (isAnonymous: true).
 let accountDataPromise = null;
 export function loadAccountData() {
   if (!accountDataPromise) {
     accountDataPromise = Promise.all([import('./auth-firebase.js'), import(FIRESTORE_SDK_URL)])
       .then(([authModule, fs]) => ({
-        ...createAccountData({ db: fs.getFirestore(authModule.app), fs, auth: authModule.auth, onUserChanged: authModule.onUserChanged }),
-        onUserChanged: authModule.onUserChanged
+        ...createAccountData({ db: fs.getFirestore(authModule.app), fs, auth: authModule.auth, onUserChanged: authModule.onSessionChanged }),
+        onUserChanged: authModule.onUserChanged,
+        onSessionChanged: authModule.onSessionChanged,
+        signInAsGuest: authModule.signInAsGuest,
+        friendlyGuestError: authModule.friendlyGuestError
       }));
     accountDataPromise.catch(() => { accountDataPromise = null; });
   }

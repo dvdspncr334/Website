@@ -61,6 +61,7 @@
     </div>
   </div>
 
+  <script src="ui-prefs.js"></script>
   <script>
     /* ---------- State and Constants ---------- */
     const CATEGORY_KEY = 'jgv3d_last_category';
@@ -70,22 +71,29 @@
     const CUSTOM_NOTE_MAX_LENGTH = 160;
     const MAX_CART_QTY = 99;
     
+    // Selections, drafts and filters are remembered per cart scope (see
+    // ui-prefs.js): guests keep the original browser keys, each signed-in
+    // account gets its own namespaced keys, and nothing is copied between
+    // them. Anonymous guest-checkout sessions use the guest scope.
+    const prefs = window.JGV3DPrefs.createScopedPrefs({
+      guestKeys: {
+        shop_options: PRODUCT_OPTIONS_KEY,
+        shop_drafts: DRAFT_CUSTOM_NOTES_KEY,
+        shop_category: CATEGORY_KEY,
+        shop_subcategory: SUBCATEGORY_KEY
+      }
+    });
+
     let allProducts = [];
-    let currentCategory = localStorage.getItem(CATEGORY_KEY) || 'all';
-    let currentSubcategory = localStorage.getItem(SUBCATEGORY_KEY) || 'all';
+    let currentCategory = prefs.getString('shop_category') || 'all';
+    let currentSubcategory = prefs.getString('shop_subcategory') || 'all';
     let currentSort = 'default';
     let searchQuery = '';
     let toastTimeout;
 
     // Shared cart service (guest cart or the signed-in account's cart).
-    // Custom-note drafts and option choices are kept per cart scope: guest
-    // values stay in this browser's storage, signed-in values live only in
-    // memory on this page, so nothing typed as a guest flows into an account.
     let cartStore = null;
     let cartState = null;
-    let cartScopeKey = 'pending';
-    let scopedPrefs = { drafts: {}, options: {} };
-    const isGuestScope = () => cartScopeKey === 'guest';
 
     import('./cart-service.js').then(({ cart }) => {
       cartStore = cart;
@@ -97,10 +105,16 @@
 
     function onCartStateChange(state) {
       cartState = state;
-      if (state.scopeKey !== cartScopeKey) {
-        cartScopeKey = state.scopeKey;
-        scopedPrefs = { drafts: {}, options: {} };
-        if (allProducts.length) renderProducts();
+      // Sign-in change: drop the previous scope's choices immediately and
+      // show this scope's own saved choices.
+      if (prefs.setScope(state.scopeKey)) {
+        currentCategory = prefs.getString('shop_category') || 'all';
+        currentSubcategory = prefs.getString('shop_subcategory') || 'all';
+        if (allProducts.length) {
+          pruneSavedPrefs();
+          updateSubcategoryFilter();
+          renderProducts();
+        }
       }
       applyCartAvailability();
     }
@@ -173,22 +187,18 @@
     }
 
     function getDraftNotes() {
-      if (!isGuestScope()) return scopedPrefs.drafts;
-      try {
-        return JSON.parse(localStorage.getItem(DRAFT_CUSTOM_NOTES_KEY)) || {};
-      } catch (e) {
-        return {};
-      }
+      return prefs.getMap('shop_drafts');
     }
 
     function saveDraftNotes(drafts) {
-      if (!isGuestScope()) {
-        scopedPrefs.drafts = drafts;
-        return;
-      }
-      try {
-        localStorage.setItem(DRAFT_CUSTOM_NOTES_KEY, JSON.stringify(drafts));
-      } catch (e) {}
+      prefs.setMap('shop_drafts', drafts);
+    }
+
+    // Removes saved choices for products that are no longer in the shop
+    // (signed-in accounts only; guest storage is left as it was).
+    function pruneSavedPrefs() {
+      prefs.pruneMap('shop_options', allProducts.map(getItemKey).filter(Boolean));
+      prefs.pruneMap('shop_drafts', allProducts.map(item => item.id).filter(Boolean));
     }
 
     function getDraftNote(itemId) {
@@ -200,6 +210,7 @@
     function setDraftNote(itemId, value) {
       if (!itemId) return;
       const drafts = getDraftNotes();
+      delete drafts[itemId];
       if (value && value.trim()) {
         drafts[itemId] = value;
       } else {
@@ -210,12 +221,7 @@
 
     /* ---------- Product Option Selection Persistence ---------- */
     function getSavedProductOptions() {
-      if (!isGuestScope()) return scopedPrefs.options;
-      try {
-        return JSON.parse(localStorage.getItem(PRODUCT_OPTIONS_KEY)) || {};
-      } catch (e) {
-        return {};
-      }
+      return prefs.getMap('shop_options');
     }
 
     function getItemKey(item) {
@@ -226,16 +232,11 @@
       const itemKey = getItemKey(item);
       if (!itemKey) return;
       const allOptions = getSavedProductOptions();
-      const itemOptions = allOptions[itemKey] || {};
+      const itemOptions = allOptions[itemKey] && typeof allOptions[itemKey] === 'object' ? allOptions[itemKey] : {};
       itemOptions[key] = value;
+      delete allOptions[itemKey];
       allOptions[itemKey] = itemOptions;
-      if (!isGuestScope()) {
-        scopedPrefs.options = allOptions;
-        return;
-      }
-      try {
-        localStorage.setItem(PRODUCT_OPTIONS_KEY, JSON.stringify(allOptions));
-      } catch (e) {}
+      prefs.setMap('shop_options', allOptions);
     }
 
     function getSavedProductOption(item, key) {
@@ -591,6 +592,7 @@
           return;
         }
 
+        pruneSavedPrefs();
         generateCategoryButtons();
         updateSubcategoryFilter();
         renderProducts();
@@ -652,15 +654,15 @@
     function filterByCategory(category) {
       currentCategory = category;
       currentSubcategory = 'all';
-      localStorage.setItem(CATEGORY_KEY, category);
-      localStorage.setItem(SUBCATEGORY_KEY, 'all');
+      prefs.setString('shop_category', category);
+      prefs.setString('shop_subcategory', 'all');
       updateSubcategoryFilter();
       renderProducts();
     }
 
     function filterBySubcategory() {
       currentSubcategory = subcategoryFilter.value;
-      localStorage.setItem(SUBCATEGORY_KEY, currentSubcategory);
+      prefs.setString('shop_subcategory', currentSubcategory);
       renderProducts();
     }
 
@@ -830,6 +832,7 @@
 
       const addBtn = card.querySelector('.add-btn');
       const scopeAtClick = cartState.scope;
+      const prefsScopeAtClick = prefs.getScopeKey();
       let added;
       if (addBtn) {
         addBtn.dataset.busy = '1';
@@ -849,7 +852,7 @@
       // Reset qty to 1 and show toast (only after the cart change was saved)
       const qtyEl = card.querySelector('.qty-value');
       if (qtyEl) qtyEl.textContent = '1';
-      if (isCustomColor && customColorNote) {
+      if (isCustomColor && customColorNote && prefs.getScopeKey() === prefsScopeAtClick) {
         customColorNote.value = '';
         setDraftNote(id, '');
         customColorNote.style.height = 'auto';
