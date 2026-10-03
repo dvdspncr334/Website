@@ -210,6 +210,7 @@
     function setDraftNote(itemId, value) {
       if (!itemId) return;
       const drafts = getDraftNotes();
+      delete drafts[itemId];
       if (value && value.trim()) {
         drafts[itemId] = value;
       } else {
@@ -233,6 +234,7 @@
       const allOptions = getSavedProductOptions();
       const itemOptions = allOptions[itemKey] && typeof allOptions[itemKey] === 'object' ? allOptions[itemKey] : {};
       itemOptions[key] = value;
+      delete allOptions[itemKey];
       allOptions[itemKey] = itemOptions;
       prefs.setMap('shop_options', allOptions);
     }

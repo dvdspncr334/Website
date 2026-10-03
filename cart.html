@@ -600,8 +600,23 @@
         } catch (error) {
           throw Object.assign(new Error(authModule.friendlyGuestError(error)), { name: 'AccountDataError', code: 'guest-auth' });
         }
-        // Let auth listeners settle before capturing the guest session.
-        await new Promise(resolve => setTimeout(resolve, 0));
+        // Wait until auth listeners report the guest session before using it.
+        await new Promise((resolve, reject) => {
+          let unsubscribe = null;
+          let done = false;
+          const finish = (error) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            if (unsubscribe) unsubscribe();
+            if (error) reject(error); else resolve();
+          };
+          const timer = setTimeout(() => finish(Object.assign(new Error('Guest sign-in is taking too long. Please try again.'), { name: 'AccountDataError', code: 'guest-auth' })), 10000);
+          unsubscribe = authModule.onSessionChanged(user => {
+            if (user && user.id === guestUid) finish();
+          });
+          if (done && unsubscribe) unsubscribe();
+        });
       } catch (error) {
         if (checkout !== session) return;
         session.busy = false;

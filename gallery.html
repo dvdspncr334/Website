@@ -136,6 +136,7 @@
       const key = getItemKey(item);
       if (!key) return;
       const selections = getSavedImageSelections();
+      delete selections[key];
       selections[key] = index;
       prefs.setMap('gallery_images', selections);
     }

@@ -105,7 +105,8 @@ service cloud.firestore {
         && request.auth.token.get('firebase', {}).get('sign_in_provider', '') == 'anonymous';
     }
 
-    // Kept in sync with isValidContactEmail() in account-data.js.
+    // Kept in sync with isValidContactEmail() in account-data.js (the client
+    // trims the email before validating and storing it; rules do not trim).
     function isValidContactEmail(value) {
       return isText(value, 6, 254)
         && value.matches('[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}');

@@ -96,20 +96,27 @@
       }
     }
 
-    // Account maps are capped (oldest entries dropped first). Guest maps keep
+    // Account maps are capped (oldest entries dropped first; callers delete and
+    // re-add a key when updating it so it counts as recent). Guest maps keep
     // their original, uncapped behaviour.
     function setMap(name, map) {
       var next = isPlainObject(map) ? map : {};
       if (accountUid(scopeKey)) {
         var keys = Object.keys(next);
-        if (keys.length > MAX_MAP_ENTRIES) {
-          var trimmed = {};
-          keys.slice(keys.length - MAX_MAP_ENTRIES).forEach(function (k) { trimmed[k] = next[k]; });
-          next = trimmed;
-        }
+        var trimmed = {};
+        keys.slice(Math.max(0, keys.length - MAX_MAP_ENTRIES)).forEach(function (k) { trimmed[k] = next[k]; });
+        next = trimmed;
       }
       var text;
       try { text = JSON.stringify(next); } catch (e) { return false; }
+      if (accountUid(scopeKey)) {
+        // Drop the oldest entries until the map fits the size cap.
+        var entries = Object.keys(next);
+        while (text.length > MAX_STRING_LENGTH && entries.length) {
+          delete next[entries.shift()];
+          text = JSON.stringify(next);
+        }
+      }
       return setString(name, text);
     }
 
