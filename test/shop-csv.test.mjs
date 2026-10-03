@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  SHOP_COLUMNS, parseShopCSV, serializeShopCSV, validateProduct, validateAll
+  SHOP_COLUMNS, parseShopCSV, serializeShopCSV, validateProduct, validateAll, applyBulkUpdate
 } from '../shop-csv.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -82,4 +82,26 @@ test('ids must be unique (case-insensitive) across products', () => {
   assert.match(errors.id, /already used/);
   const problems = validateAll([valid, { ...valid }]);
   assert.deepEqual(problems.map(p => p.index), [0, 1]);
+});
+
+test('bulk updates change only selected products without mutating the original rows', () => {
+  const rows = [valid, { ...valid, id: 'tele-test' }];
+  for (const [field, value] of [['price', '25.50'], ['discount', '100'], ['status', 'preorder']]) {
+    const updated = applyBulkUpdate(rows, new Set([valid.id]), field, value);
+    assert.equal(updated[0][field], value);
+    assert.notEqual(updated[0], rows[0]);
+    assert.equal(updated[1], rows[1]);
+    assert.equal(rows[0], valid);
+  }
+  assert.deepEqual(applyBulkUpdate(rows, [], 'price', '20'), rows);
+});
+
+test('bulk edits use individual validation and fail atomically', () => {
+  const rows = [valid, { ...valid, id: 'tele-test', img: '' }];
+  for (const [field, value] of [['price', '-1'], ['price', '1e2'], ['discount', '101'], ['status', 'sold'], ['id', 'new-id']]) {
+    assert.throws(() => applyBulkUpdate(rows, [valid.id], field, value));
+  }
+  assert.throws(() => applyBulkUpdate(rows, rows.map(row => row.id), 'price', '20'), /tele-test/);
+  assert.equal(rows[0].price, '199.99');
+  assert.equal(rows[1].price, '199.99');
 });
