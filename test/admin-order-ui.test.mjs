@@ -545,6 +545,8 @@ test('order item images keep exact-case site paths and map this site\'s own abso
   assert.equal(orderItemImagePath('http://localhost:8000/images/Stratocaster/CTS/Red.png', 'http://localhost:8000/admin.html'),
     'images/Stratocaster/CTS/Red.png', 'a local preview origin is the page\'s own base');
   assert.equal(orderItemImagePath('http://localhost:8000/images/a.png', 'https://www.jgv3d.com/admin.html'), '');
+  assert.equal(orderItemImagePath('https://www.jgv3d.com/Website/images/Stratocaster/CTS/Red.png', 'https://www.jgv3d.com/Website/admin.html'),
+    'images/Stratocaster/CTS/Red.png', 'a rejected match on one base still tries the page base');
 });
 
 test('detail thumbnails are bounded, fall back once with a visible label and never loop when the placeholder fails', async () => {
@@ -610,12 +612,19 @@ test('order rows show every status as one pill, formatted totals with counts and
   await path.children[2].emit('click');
   assert.deepEqual(copies, [records[4].path]);
   assert.equal(path.children[2].textContent, 'Copied');
+  assert.match(f.get('account-orders-status').textContent, /Copied document path/, 'result is announced in the status region');
   assert.deepEqual(f.ui.state().selected, [records[4].path], 'copying never changes path-keyed selection');
   const failing = fixture({ list: async () => records, copyText: async () => { throw new Error('denied'); } });
   await failing.ui.refresh();
   const failingButton = failing.get('account-order-rows').children[0].children[1].children[1].children[2];
   await failingButton.emit('click');
   assert.match(failingButton.textContent, /Copy failed/);
+  assert.match(failing.get('account-orders-status').textContent, /Couldn't copy/);
+  const noClipboard = fixture({ list: async () => records });
+  await noClipboard.ui.refresh();
+  const noClipboardButton = noClipboard.get('account-order-rows').children[0].children[1].children[1].children[2];
+  await noClipboardButton.emit('click');
+  assert.match(noClipboardButton.textContent, /Copy failed/, 'a missing clipboard API is never reported as copied');
   assert.deepEqual(f.writes, []);
   assert.deepEqual(f.deletes, []);
 });

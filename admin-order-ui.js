@@ -40,7 +40,9 @@ export function orderItemImagePath(raw, pageUrl = '') {
   for (const base of bases) {
     const site = new URL(base);
     if (url.origin !== site.origin || !url.pathname.startsWith(site.pathname)) continue;
-    try { return siteImagePath(decodeURIComponent(url.pathname.slice(site.pathname.length))); } catch { return ''; }
+    let path = '';
+    try { path = siteImagePath(decodeURIComponent(url.pathname.slice(site.pathname.length))); } catch { continue; }
+    if (path) return path;
   }
   return '';
 }
@@ -82,7 +84,11 @@ export function privateOrderExport(capture) {
 }
 
 export function createAdminOrderUI({ document, service, download, formatTime = value => value || '—',
-  copyText = text => globalThis.navigator?.clipboard?.writeText(text) }) {
+  copyText = text => {
+    const clipboard = globalThis.navigator?.clipboard;
+    if (!clipboard?.writeText) throw new Error('Clipboard unavailable.');
+    return clipboard.writeText(text);
+  } }) {
   const $ = id => document.getElementById(id);
   let uid = null, epoch = 0, request = 0;
   let orders = [], selected = new Set(), loaded = false, busy = false, failed = false, refreshRequired = false;
@@ -161,13 +167,14 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     copy.type = 'button';
     copy.className = 'admin-btn admin-btn-small admin-btn-outline admin-copy-path';
     copy.textContent = 'Copy path';
-    copy.setAttribute('aria-label', `Copy document path ${path}`);
     copy.addEventListener('click', async () => {
       try {
         await copyText(path);
         copy.textContent = 'Copied';
+        message(`Copied document path ${path}.`);
       } catch {
         copy.textContent = 'Copy failed: select the path text';
+        message('Couldn\'t copy the document path. Select the path text and copy it manually.', true);
       }
     });
     details.append(summary, code, copy);
