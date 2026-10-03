@@ -33,29 +33,46 @@
 
     <div id="admin-app" hidden>
       <div class="admin-tabs" role="tablist" aria-label="Admin sections">
-        <button type="button" class="admin-tab active" role="tab" id="tab-shop" aria-controls="panel-shop" aria-selected="true" data-panel="panel-shop">Shop Management</button>
+        <button type="button" class="admin-tab active" role="tab" id="tab-dashboard" aria-controls="panel-dashboard" aria-selected="true" data-panel="panel-dashboard">Dashboard</button>
+        <button type="button" class="admin-tab" role="tab" id="tab-shop" aria-controls="panel-shop" aria-selected="false" data-panel="panel-shop">Shop Management</button>
         <button type="button" class="admin-tab" role="tab" id="tab-activity" aria-controls="panel-activity" aria-selected="false" data-panel="panel-activity">User Activity</button>
-        <button type="button" class="admin-tab" role="tab" id="tab-orders" aria-controls="panel-orders" aria-selected="false" data-panel="panel-orders">Orders Overview</button>
+        <button type="button" class="admin-tab" role="tab" id="tab-orders" aria-controls="panel-orders" aria-selected="false" data-panel="panel-orders">Orders</button>
         <button type="button" class="admin-tab" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false" data-panel="panel-settings">Settings</button>
       </div>
 
+      <section id="panel-dashboard" class="admin-panel" role="tabpanel" aria-labelledby="tab-dashboard">
+        <div class="admin-card">
+          <h2>Dashboard</h2>
+          <div class="admin-stats" aria-live="polite">
+            <div class="admin-stat"><span>Total products</span><strong id="stat-products">—</strong></div>
+            <div class="admin-stat"><span>Users signed in in the last 24 hours</span><strong id="stat-active">—</strong></div>
+            <div class="admin-stat"><span>Users with a recorded sign-in in the last 7 days</span><strong id="stat-recent">—</strong></div>
+          </div>
+          <p class="admin-note">Sign-in counts are unique user records based on lastSignInAt, not the number of sign-in events. Older sign-ins and users without activity records are not counted.</p>
+          <button type="button" class="admin-btn admin-btn-outline" id="dashboard-refresh">Refresh dashboard</button>
+          <p id="dashboard-status" class="admin-status" role="status"></p>
+        </div>
+      </section>
+
       <!-- Shop Management -->
-      <section id="panel-shop" class="admin-panel" role="tabpanel" aria-labelledby="tab-shop">
+      <section id="panel-shop" class="admin-panel" role="tabpanel" aria-labelledby="tab-shop" hidden>
         <div class="admin-card">
           <h2>Products (data/shop.csv)</h2>
           <p class="admin-note">Changes here are kept in this page only until you <strong>download</strong> the CSV or <strong>commit</strong> it to GitHub below. The live shop updates after GitHub Pages redeploys (usually a minute or two).</p>
           <div class="admin-toolbar">
             <input type="search" id="product-search" class="admin-input" placeholder="Filter by id, title or category" aria-label="Filter products">
-            <button type="button" class="admin-btn" id="add-product-btn">Add product</button>
+            <button type="button" class="admin-btn" id="add-product-btn" disabled>Add product</button>
             <button type="button" class="admin-btn admin-btn-outline" id="reload-csv-btn">Reload from site</button>
-            <button type="button" class="admin-btn admin-btn-outline" id="download-csv-btn">Download CSV</button>
+            <button type="button" class="admin-btn admin-btn-outline" id="download-csv-btn" disabled>Download CSV</button>
+            <button type="button" class="admin-btn" id="bulk-open" disabled>Bulk update selected</button>
+            <span id="selection-count" role="status">0 selected</span>
           </div>
           <p id="shop-status" class="admin-status" role="status"></p>
           <button type="button" class="admin-btn" id="shop-retry" hidden>Retry</button>
           <div class="admin-table-wrap">
             <table class="admin-table" id="product-table">
               <thead>
-                <tr><th>ID</th><th>Title</th><th>Price</th><th>Category</th><th>Status</th><th>Actions</th></tr>
+                <tr><th><input type="checkbox" id="select-visible" aria-label="Select all visible products"></th><th>ID</th><th>Title</th><th>Price</th><th>Category</th><th>Status</th><th>Actions</th></tr>
               </thead>
               <tbody id="product-rows"></tbody>
             </table>
@@ -92,15 +109,25 @@
       <!-- User Activity -->
       <section id="panel-activity" class="admin-panel" role="tabpanel" aria-labelledby="tab-activity" hidden>
         <div class="admin-card">
-          <h2>Recent user activity</h2>
+          <h2>User activity</h2>
           <p class="admin-note">Each signed-in visitor records their own email, last sign-in time and last activity time (at most every 15 minutes) in Firestore <code>userActivity/{uid}</code>. Only admins can read it. Users who haven't signed in since this was deployed won't appear.</p>
           <div class="admin-toolbar">
             <button type="button" class="admin-btn admin-btn-outline" id="activity-refresh">Refresh</button>
+            <button type="button" class="admin-btn admin-btn-outline" id="activity-export" disabled>Export filtered CSV</button>
+          </div>
+          <div class="admin-form-grid">
+            <label class="admin-field">Email search<input type="search" class="admin-input" id="activity-email"></label>
+            <label class="admin-field">Last sign-in from (local day)<input type="date" class="admin-input" id="activity-start"></label>
+            <label class="admin-field">Last sign-in through (local day, inclusive)<input type="date" class="admin-input" id="activity-end"></label>
+            <label class="admin-field">Sort by<select class="admin-input" id="activity-sort"><option value="lastActiveAt">Last active</option><option value="lastSignInAt">Last sign-in</option><option value="email">Email</option></select></label>
+            <label class="admin-field">Direction<select class="admin-input" id="activity-direction"><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
           </div>
           <p id="activity-status" class="admin-status" role="status"></p>
+          <p id="activity-count" class="admin-status" role="status">Total: not loaded · Filtered: not loaded</p>
+          <button type="button" class="admin-btn" id="activity-retry" hidden>Retry activity</button>
           <div class="admin-table-wrap">
             <table class="admin-table">
-              <thead><tr><th>Email</th><th>Last sign-in</th><th>Last active</th><th>UID</th></tr></thead>
+              <thead><tr><th>Email</th><th>Last sign-in</th><th>Last active</th><th>UID</th><th>Actions</th></tr></thead>
               <tbody id="activity-rows"></tbody>
             </table>
           </div>
@@ -124,6 +151,27 @@
 
       <!-- Settings -->
       <section id="panel-settings" class="admin-panel" role="tabpanel" aria-labelledby="tab-settings" hidden>
+        <div class="admin-card">
+          <h2>Backup and maintenance</h2>
+          <p class="admin-note">Backup includes the current in-memory products (including unsaved edits), all user activity, and the admin whitelist. No credentials are included.</p>
+          <button type="button" class="admin-btn" id="backup-download">Download JSON backup</button>
+          <p id="backup-status" class="admin-status" role="status"></p>
+          <p class="admin-note admin-warning">Activity deletion removes tracking records only, never Firebase Auth accounts or admin access. Users can create new activity when they return. Order reset affects only demo orders in this browser, not carts or accounts.</p>
+          <div class="admin-toolbar">
+            <button type="button" class="admin-btn admin-btn-danger" id="clear-activity">Clear all user activity</button>
+            <button type="button" class="admin-btn admin-btn-danger" id="reset-orders">Reset browser-local demo orders</button>
+          </div>
+          <p id="maintenance-status" class="admin-status" role="status"></p>
+        </div>
+        <div class="admin-card">
+          <h2>Session audit log</h2>
+          <p class="admin-note">This log lasts only until this page is refreshed. It records successful changes and downloads, not credentials.</p>
+          <button type="button" class="admin-btn admin-btn-outline" id="audit-clear">Clear log</button>
+          <div class="admin-table-wrap"><table class="admin-table">
+            <thead><tr><th>Time</th><th>Action</th><th>Details</th><th>Count</th></tr></thead>
+            <tbody id="audit-rows"></tbody>
+          </table></div>
+        </div>
         <div class="admin-card">
           <h2>Admin users</h2>
           <form id="add-admin-form" class="admin-toolbar" novalidate>
@@ -153,22 +201,126 @@
     </div>
   </main>
 
+  <dialog id="confirm-dialog" class="admin-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <form id="confirm-form">
+      <h2 id="confirm-title">Confirm action</h2>
+      <p id="confirm-message" class="admin-note"></p>
+      <label id="confirm-label" class="admin-field" hidden>Type confirm-clear to confirm<input class="admin-input" id="confirm-text" autocomplete="off" spellcheck="false"></label>
+      <div class="admin-toolbar">
+        <button type="submit" class="admin-btn admin-btn-danger" id="confirm-next">Continue</button>
+        <button type="button" class="admin-btn admin-btn-outline" id="confirm-cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="bulk-dialog" class="admin-dialog" aria-labelledby="bulk-title">
+    <form id="bulk-form" novalidate>
+      <h2 id="bulk-title">Bulk product update</h2>
+      <p class="admin-note">Preview changes before applying them to selected products. Changes remain in memory until exported or committed.</p>
+      <label class="admin-field">Field<select class="admin-input" id="bulk-field"><option value="status">Status</option><option value="discount">Discount %</option><option value="price">Price (USD)</option></select></label>
+      <label class="admin-field">Value
+        <select class="admin-input" id="bulk-status-value"><option value="">(none)</option><option value="in-stock">in-stock</option><option value="made-to-order">made-to-order</option><option value="preorder">preorder</option></select>
+        <input class="admin-input" id="bulk-number-value" type="text" inputmode="decimal" hidden>
+      </label>
+      <p id="bulk-message" class="admin-status" role="alert"></p>
+      <div id="bulk-preview" class="admin-table-wrap" hidden><table class="admin-table">
+        <thead><tr><th>ID</th><th>Title</th><th>Old value</th><th>New value</th></tr></thead><tbody id="bulk-preview-rows"></tbody>
+      </table></div>
+      <div class="admin-toolbar">
+        <button type="submit" class="admin-btn">Preview changes</button>
+        <button type="button" class="admin-btn" id="bulk-confirm" disabled>Confirm update</button>
+        <button type="button" class="admin-btn admin-btn-outline" id="bulk-cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
   <footer>
     <p>&copy; JGV3D &middot; Admin view</p>
   </footer>
 
   <script type="module">
-    import { loadFirebase, isAdmin, clearAdminCache } from './admin-auth.js';
+    import { loadFirebase, isAdmin, clearAdminCache, deleteUserActivity, clearUserActivity } from './admin-auth.js';
     import {
       SHOP_COLUMNS, HANDEDNESS_VALUES, STATUS_VALUES,
-      parseShopCSV, serializeShopCSV, validateProduct, validateAll, normalizeProduct
+      parseShopCSV, serializeShopCSV, validateProduct, validateAll, normalizeProduct, applyBulkUpdate
     } from './shop-csv.js';
+    import { activityTime, activityStats, filterActivity, exportTableCSV, backupData, backupFilename, createSessionAudit } from './admin-tools.js';
 
     const $ = id => document.getElementById(id);
     const EMAIL_RE = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
     let fb = null;
     let currentUid = null;
     const loaded = {};
+    let auditStorage = null;
+    try { auditStorage = window.sessionStorage; } catch (e) { /* storage can be blocked */ }
+    const audit = createSessionAudit(auditStorage);
+
+    function renderAudit() {
+      $('audit-rows').textContent = '';
+      for (const entry of audit.entries().reverse()) {
+        const tr = document.createElement('tr');
+        tr.append(cell(formatTime(entry.timestamp)), cell(entry.action), cell(entry.details), cell(entry.count));
+        $('audit-rows').append(tr);
+      }
+      if (!$('audit-rows').children.length) {
+        const tr = document.createElement('tr');
+        const td = cell('No actions recorded in this page session.');
+        td.colSpan = 4;
+        tr.append(td);
+        $('audit-rows').append(tr);
+      }
+    }
+
+    function recordAudit(action, details, count = 0) {
+      audit.record(action, details, count);
+      renderAudit();
+    }
+    $('audit-clear').addEventListener('click', () => { audit.clear(); renderAudit(); });
+    renderAudit();
+
+    function downloadFile(contents, filename, type) {
+      const blob = new Blob([contents], { type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.append(link);
+      try { link.click(); } finally {
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+      return blob.size;
+    }
+
+    function askConfirmation(title, message, typed = false) {
+      const dialog = $('confirm-dialog');
+      if (dialog.open) return Promise.resolve(false);
+      $('confirm-title').textContent = title;
+      $('confirm-message').textContent = message;
+      $('confirm-label').hidden = !typed;
+      $('confirm-text').value = '';
+      $('confirm-next').textContent = typed ? 'Confirm deletion' : 'Continue';
+      $('confirm-next').disabled = typed;
+      dialog.returnValue = '';
+      return new Promise(resolve => {
+        dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirmed'), { once: true });
+        dialog.showModal();
+        (typed ? $('confirm-text') : $('confirm-cancel')).focus();
+      });
+    }
+
+    async function confirmDestructive(title, message) {
+      if (!await askConfirmation(title, message)) return false;
+      return askConfirmation('Final confirmation', `${message} This cannot be undone. Type confirm-clear below to proceed.`, true);
+    }
+    $('confirm-form').addEventListener('submit', event => {
+      event.preventDefault();
+      if (!$('confirm-label').hidden && $('confirm-text').value !== 'confirm-clear') return;
+      $('confirm-dialog').close('confirmed');
+    });
+    $('confirm-text').addEventListener('input', () => {
+      $('confirm-next').disabled = $('confirm-text').value !== 'confirm-clear';
+    });
+    $('confirm-cancel').addEventListener('click', () => $('confirm-dialog').close('cancelled'));
 
     function setStatus(el, text, type = '') {
       el.textContent = text || '';
@@ -182,8 +334,8 @@
     }
 
     function formatTime(value) {
-      const date = value && typeof value.toDate === 'function' ? value.toDate() : (value ? new Date(value) : null);
-      return date && !isNaN(date.getTime()) ? date.toLocaleString() : '—';
+      const time = activityTime(value);
+      return time === null ? '—' : new Date(time).toLocaleString();
     }
 
     function isPermissionError(error) {
@@ -258,7 +410,7 @@
       $('logout-btn').hidden = false;
       $('admin-gate').hidden = true;
       $('admin-app').hidden = false;
-      openPanel('panel-shop');
+      openPanel('panel-dashboard');
     }
 
     $('gate-retry').addEventListener('click', () => {
@@ -279,8 +431,9 @@
 
     /* ---------------- Tabs ---------------- */
     const loaders = {
-      'panel-shop': () => loadCSV(),
-      'panel-activity': () => loadActivity(),
+      'panel-dashboard': () => loadDashboard(),
+      'panel-shop': () => ensureProducts(),
+      'panel-activity': () => activityLoaded ? renderActivity() : loadActivity(),
       'panel-orders': () => loadOrders(),
       'panel-settings': () => { loadAdmins(); checkRules(); }
     };
@@ -290,6 +443,7 @@
         const active = tab.dataset.panel === id;
         tab.classList.toggle('active', active);
         tab.setAttribute('aria-selected', String(active));
+        tab.tabIndex = active ? 0 : -1;
       });
       document.querySelectorAll('.admin-panel').forEach(panel => { panel.hidden = panel.id !== id; });
       if (!loaded[id]) {
@@ -300,6 +454,16 @@
 
     document.querySelectorAll('.admin-tab').forEach(tab => {
       tab.addEventListener('click', () => openPanel(tab.dataset.panel));
+      tab.addEventListener('keydown', event => {
+        const tabs = [...document.querySelectorAll('.admin-tab')];
+        const index = tabs.indexOf(tab);
+        let target;
+        if (event.key === 'ArrowRight') target = tabs[(index + 1) % tabs.length];
+        if (event.key === 'ArrowLeft') target = tabs[(index + tabs.length - 1) % tabs.length];
+        if (event.key === 'Home') target = tabs[0];
+        if (event.key === 'End') target = tabs[tabs.length - 1];
+        if (target) { event.preventDefault(); target.focus(); openPanel(target.dataset.panel); }
+      });
     });
 
     /* ---------------- Shop CSV editor ---------------- */
@@ -308,6 +472,33 @@
     let dirty = false;
     let editingIndex = -1;
     let baseSha = null; // git blob SHA of the CSV the edits are based on
+    let csvLoaded = false;
+    let csvPromise = null;
+    const selectedProducts = new Set();
+
+    function updateStats() {
+      $('stat-products').textContent = csvLoaded ? String(rows.length) : '—';
+      const stats = activityLoaded ? activityStats(activityUsers) : null;
+      $('stat-active').textContent = stats ? String(stats.activeUsers) : '—';
+      $('stat-recent').textContent = stats ? String(stats.recentSignIns) : '—';
+    }
+
+    async function loadDashboard() {
+      $('dashboard-refresh').disabled = true;
+      setStatus($('dashboard-status'), 'Loading products and all user activity…');
+      try {
+        const [productsOK, activityOK] = await Promise.all([ensureProducts(), loadActivity()]);
+        updateStats();
+        setStatus($('dashboard-status'), productsOK && activityOK
+          ? 'Dashboard updated. Product totals include in-memory edits.'
+          : 'Some data could not be loaded; unavailable counts show —. Use Refresh dashboard to retry.', productsOK && activityOK ? 'ok' : 'error');
+      } finally { $('dashboard-refresh').disabled = false; }
+    }
+    $('dashboard-refresh').addEventListener('click', loadDashboard);
+
+    function ensureProducts() {
+      return csvLoaded ? Promise.resolve(true) : loadCSV();
+    }
 
     async function gitBlobSha(bytes) {
       const header = new TextEncoder().encode(`blob ${bytes.length}\0`);
@@ -339,15 +530,32 @@
     function setDirty(value) {
       dirty = value;
       if (dirty) setStatus($('shop-status'), `${rows.length} products · unsaved changes (download or commit to keep them).`, 'warning');
+      updateStats();
     }
 
     window.addEventListener('beforeunload', event => {
       if (dirty) { event.preventDefault(); event.returnValue = ''; }
     });
 
-    async function loadCSV() {
+    function loadCSV() {
+      if (csvPromise) return csvPromise;
+      csvPromise = readCSV().finally(() => {
+        csvPromise = null;
+        $('add-product-btn').disabled = !csvLoaded;
+        $('download-csv-btn').disabled = !csvLoaded;
+        updateSelection();
+      });
+      return csvPromise;
+    }
+
+    async function readCSV() {
       if (dirty && !confirm('Discard your unsaved product changes and reload data/shop.csv?')) return;
       $('shop-retry').hidden = true;
+      $('add-product-btn').disabled = true;
+      $('download-csv-btn').disabled = true;
+      $('bulk-open').disabled = true;
+      $('select-visible').disabled = true;
+      closeForm();
       setStatus($('shop-status'), 'Loading data/shop.csv…');
       $('product-rows').textContent = '';
       try {
@@ -358,14 +566,20 @@
         const parsed = parseShopCSV(new TextDecoder().decode(bytes));
         headers = parsed.headers;
         rows = parsed.rows;
+        csvLoaded = true;
+        selectedProducts.clear();
         dirty = false;
         closeForm();
         renderProducts();
         const skipped = parsed.skipped.length ? ` ${parsed.skipped.length} malformed line(s) skipped (lines ${parsed.skipped.join(', ')}); they will be dropped if you save.` : '';
         setStatus($('shop-status'), `Loaded ${rows.length} products.${skipped}`, skipped ? 'warning' : 'ok');
+        updateStats();
+        return true;
       } catch (e) {
+        renderProducts();
         setStatus($('shop-status'), 'Couldn\'t load data/shop.csv. Check your connection and try again.', 'error');
         $('shop-retry').hidden = false;
+        return false;
       }
     }
 
@@ -377,6 +591,19 @@
         const haystack = `${row.id} ${row.title} ${row.category} ${row.subcategory}`.toLowerCase();
         if (filter && !haystack.includes(filter)) return;
         const tr = document.createElement('tr');
+        const selectCell = document.createElement('td');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.dataset.productId = row.id;
+        checkbox.setAttribute('aria-label', `Select ${row.id}: ${row.title}`);
+        checkbox.checked = selectedProducts.has(row.id);
+        checkbox.addEventListener('change', () => {
+          if (checkbox.checked) selectedProducts.add(row.id);
+          else selectedProducts.delete(row.id);
+          updateSelection();
+        });
+        selectCell.append(checkbox);
+        tr.append(selectCell);
         tr.append(cell(row.id), cell(row.title), cell(row.price ? `$${row.price}` : ''), cell(row.category), cell(row.status));
         const actions = document.createElement('td');
         actions.className = 'admin-actions';
@@ -397,11 +624,93 @@
       if (!body.children.length) {
         const tr = document.createElement('tr');
         const td = cell(rows.length ? 'No products match the filter.' : 'No products yet.');
-        td.colSpan = 6;
+        td.colSpan = 7;
         tr.append(td);
         body.append(tr);
       }
+      updateSelection();
     }
+
+    function updateSelection() {
+      const visible = [...$('product-rows').querySelectorAll('input[type="checkbox"]')];
+      const checked = visible.filter(input => input.checked).length;
+      $('select-visible').checked = visible.length > 0 && checked === visible.length;
+      $('select-visible').indeterminate = checked > 0 && checked < visible.length;
+      $('select-visible').disabled = !visible.length;
+      $('selection-count').textContent = `${selectedProducts.size} selected`;
+      $('bulk-open').disabled = !selectedProducts.size || Boolean(csvPromise);
+    }
+    $('select-visible').addEventListener('change', () => {
+      for (const checkbox of $('product-rows').querySelectorAll('input[type="checkbox"]')) {
+        checkbox.checked = $('select-visible').checked;
+        if (checkbox.checked) selectedProducts.add(checkbox.dataset.productId);
+        else selectedProducts.delete(checkbox.dataset.productId);
+      }
+      updateSelection();
+    });
+
+    let bulkCandidate = null;
+    let bulkSelection = [];
+    function invalidateBulk() {
+      bulkCandidate = null;
+      $('bulk-confirm').disabled = true;
+      $('bulk-preview').hidden = true;
+      setStatus($('bulk-message'), '');
+      const isStatus = $('bulk-field').value === 'status';
+      $('bulk-status-value').hidden = !isStatus;
+      $('bulk-number-value').hidden = isStatus;
+      $('bulk-status-value').disabled = !isStatus;
+      $('bulk-number-value').disabled = isStatus;
+    }
+    $('bulk-open').addEventListener('click', () => {
+      if (!selectedProducts.size || csvPromise) return;
+      bulkSelection = [...selectedProducts];
+      $('bulk-field').value = 'status';
+      $('bulk-status-value').value = '';
+      $('bulk-number-value').value = '';
+      invalidateBulk();
+      $('bulk-dialog').showModal();
+    });
+    for (const id of ['bulk-field', 'bulk-status-value', 'bulk-number-value']) {
+      $(id).addEventListener('input', invalidateBulk);
+      $(id).addEventListener('change', invalidateBulk);
+    }
+    $('bulk-form').addEventListener('submit', event => {
+      event.preventDefault();
+      const field = $('bulk-field').value;
+      const value = field === 'status' ? $('bulk-status-value').value : $('bulk-number-value').value.trim();
+      invalidateBulk();
+      try {
+        if (field !== 'status' && value === '') throw new Error('Enter a numeric value, including 0 to remove a discount.');
+        const candidate = applyBulkUpdate(rows, bulkSelection, field, value);
+        $('bulk-preview-rows').textContent = '';
+        rows.forEach((row, index) => {
+          if (!bulkSelection.includes(row.id)) return;
+          const tr = document.createElement('tr');
+          tr.append(cell(row.id), cell(row.title), cell(row[field]), cell(candidate[index][field]));
+          $('bulk-preview-rows').append(tr);
+        });
+        bulkCandidate = { rows: candidate, field, value };
+        $('bulk-preview').hidden = false;
+        $('bulk-confirm').disabled = false;
+        setStatus($('bulk-message'), `Preview: ${bulkSelection.length} selected product(s). Confirm to apply.`, 'ok');
+      } catch (error) {
+        setStatus($('bulk-message'), error.message, 'error');
+      }
+    });
+    $('bulk-confirm').addEventListener('click', () => {
+      if (!bulkCandidate) return;
+      rows = bulkCandidate.rows;
+      recordAudit('Bulk product update', `IDs: ${bulkSelection.join(', ')}; ${bulkCandidate.field}=${bulkCandidate.value}`, bulkSelection.length);
+      selectedProducts.clear();
+      closeForm();
+      renderProducts();
+      setDirty(true);
+      $('bulk-dialog').close();
+      invalidateBulk();
+    });
+    $('bulk-cancel').addEventListener('click', () => $('bulk-dialog').close());
+    $('bulk-dialog').addEventListener('close', invalidateBulk);
 
     function buildFields() {
       const container = $('product-fields');
@@ -488,23 +797,33 @@
         if (first) $(`field-${first}`).focus();
         return;
       }
-      if (editingIndex >= 0) rows[editingIndex] = normalized;
-      else rows.push(normalized);
+      if (editingIndex >= 0) {
+        const oldId = rows[editingIndex].id;
+        rows[editingIndex] = normalized;
+        if (selectedProducts.delete(oldId)) selectedProducts.add(normalized.id);
+        recordAudit('Product updated', `ID: ${oldId} → ${normalized.id}`, 1);
+      } else {
+        rows.push(normalized);
+        recordAudit('Product added', `ID: ${normalized.id}`, 1);
+      }
       closeForm();
       renderProducts();
       setDirty(true);
     });
 
     $('product-cancel').addEventListener('click', closeForm);
-    $('add-product-btn').addEventListener('click', () => openForm(-1));
+    $('add-product-btn').addEventListener('click', () => { if (csvLoaded && !csvPromise) openForm(-1); });
     $('reload-csv-btn').addEventListener('click', () => loadCSV());
     $('shop-retry').addEventListener('click', () => loadCSV());
     $('product-search').addEventListener('input', renderProducts);
 
-    function deleteProduct(index) {
+    async function deleteProduct(index) {
       const row = rows[index];
-      if (!row || !confirm(`Delete product "${row.id}" (${row.title})? This only changes the list here until you download or commit the CSV.`)) return;
+      if (!row || csvPromise || !await confirmDestructive('Delete product', `Delete product "${row.id}" (${row.title})? This only changes the list here until you download or commit the CSV.`)) return;
+      if (rows[index] !== row) return;
       rows.splice(index, 1);
+      selectedProducts.delete(row.id);
+      recordAudit('Product deleted', `ID: ${row.id}`, 1);
       if (editingIndex === index) closeForm();
       else if (editingIndex > index) editingIndex -= 1;
       renderProducts();
@@ -513,6 +832,10 @@
 
     // Returns the CSV text, or null (with a message) if any row is invalid.
     function exportCSV(statusEl) {
+      if (!csvLoaded || csvPromise) {
+        setStatus(statusEl, 'Load products successfully before exporting or committing.', 'error');
+        return null;
+      }
       const problems = validateAll(rows);
       if (problems.length) {
         const list = problems.slice(0, 5).map(p => `row ${p.index + 1} (${p.id || 'no id'}): ${Object.values(p.errors)[0]}`).join('; ');
@@ -525,14 +848,8 @@
     $('download-csv-btn').addEventListener('click', () => {
       const csv = exportCSV($('shop-status'));
       if (csv === null) return;
-      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'shop.csv';
-      document.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadFile(csv, 'shop.csv', 'text/csv;charset=utf-8');
+      recordAudit('CSV export', 'shop.csv', rows.length);
       setStatus($('shop-status'), 'Downloaded shop.csv. Replace data/shop.csv in the repository with it to publish.', 'ok');
     });
 
@@ -616,27 +933,221 @@
     });
 
     /* ---------------- User activity ---------------- */
-    async function loadActivity() {
-      const status = $('activity-status');
+    let activityUsers = [];
+    let activityLoaded = false;
+    let activityPromise = null;
+    let activityMutation = false;
+
+    async function readCollection(name) {
+      const { fs, db } = fb;
+      const snap = await fs.getDocs(fs.collection(db, name));
+      return snap.docs.map(doc => ({ ...doc.data(), uid: doc.id }));
+    }
+
+    function activityOptions() {
+      return {
+        email: $('activity-email').value,
+        start: $('activity-start').value,
+        end: $('activity-end').value,
+        sort: $('activity-sort').value,
+        direction: $('activity-direction').value
+      };
+    }
+
+    function filteredActivity() {
+      const options = activityOptions();
+      if (options.start && options.end && options.start > options.end) throw new Error('Start date must be on or before the end date.');
+      return filterActivity(activityUsers, options);
+    }
+
+    function renderActivity() {
       const body = $('activity-rows');
-      setStatus(status, 'Loading recent activity…');
       body.textContent = '';
+      if (!activityLoaded) return;
+      let users;
       try {
-        const { fs, db } = fb;
-        const snap = await fs.getDocs(fs.query(fs.collection(db, 'userActivity'), fs.orderBy('lastActiveAt', 'desc'), fs.limit(50)));
-        snap.forEach(doc => {
-          const data = doc.data();
-          const tr = document.createElement('tr');
-          tr.append(cell(data.email), cell(formatTime(data.lastSignInAt)), cell(formatTime(data.lastActiveAt)), cell(doc.id));
-          body.append(tr);
-        });
-        setStatus(status, snap.empty ? 'No activity recorded yet.' : `Showing the ${snap.size} most recently active user(s).`, 'ok');
+        users = filteredActivity();
+      } catch (error) {
+        $('activity-export').disabled = true;
+        $('activity-count').textContent = `Total: ${activityUsers.length} · Filtered: invalid date range`;
+        setStatus($('activity-status'), error.message, 'error');
+        return;
+      }
+      $('activity-export').disabled = activityMutation;
+      $('activity-count').textContent = `Total: ${activityUsers.length} · Filtered: ${users.length}`;
+      for (const user of users) {
+        const tr = document.createElement('tr');
+        tr.append(cell(user.email), cell(formatTime(user.lastSignInAt)), cell(formatTime(user.lastActiveAt)), cell(user.uid));
+        const actions = document.createElement('td');
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'admin-btn admin-btn-small admin-btn-danger';
+        remove.textContent = 'Delete activity';
+        remove.disabled = activityMutation;
+        remove.addEventListener('click', () => removeActivity(user));
+        actions.append(remove);
+        tr.append(actions);
+        body.append(tr);
+      }
+      if (!users.length) {
+        const tr = document.createElement('tr');
+        const td = cell(activityUsers.length ? 'No activity matches the filters.' : 'No activity recorded yet.');
+        td.colSpan = 5;
+        tr.append(td);
+        body.append(tr);
+      }
+      setStatus($('activity-status'), 'All activity records loaded. Filters use last sign-in in your local timezone.', 'ok');
+    }
+
+    function loadActivity() {
+      if (activityPromise) return activityPromise;
+      if (activityMutation) return Promise.resolve(false);
+      activityPromise = readActivity().finally(() => { activityPromise = null; });
+      return activityPromise;
+    }
+
+    async function readActivity() {
+      const status = $('activity-status');
+      activityLoaded = false;
+      updateStats();
+      $('activity-refresh').disabled = true;
+      $('activity-retry').hidden = true;
+      $('activity-export').disabled = true;
+      $('activity-count').textContent = 'Total: loading · Filtered: loading';
+      setStatus(status, 'Loading all user activity…');
+      $('activity-rows').textContent = '';
+      try {
+        activityUsers = await readCollection('userActivity');
+        activityLoaded = true;
+        renderActivity();
+        updateStats();
+        return true;
       } catch (error) {
         setStatus(status, `Couldn't load activity. ${friendlyFirestoreError(error)} Use Refresh to retry.`, 'error');
+        $('activity-count').textContent = 'Total: unavailable · Filtered: unavailable';
+        $('activity-retry').hidden = false;
         handleDataError(error);
+        return false;
+      } finally {
+        $('activity-refresh').disabled = false;
       }
     }
     $('activity-refresh').addEventListener('click', loadActivity);
+    $('activity-retry').addEventListener('click', loadActivity);
+    for (const id of ['activity-email', 'activity-start', 'activity-end', 'activity-sort', 'activity-direction']) {
+      $(id).addEventListener('input', renderActivity);
+      $(id).addEventListener('change', renderActivity);
+    }
+    $('activity-export').addEventListener('click', () => {
+      if (!activityLoaded || activityMutation) return;
+      try {
+        const users = filteredActivity();
+        const iso = value => { const time = activityTime(value); return time === null ? '' : new Date(time).toISOString(); };
+        const csv = exportTableCSV(['UID', 'Email', 'Last sign-in', 'Last active'],
+          users.map(user => [user.uid, user.email, iso(user.lastSignInAt), iso(user.lastActiveAt)]));
+        downloadFile(csv, 'user-activity.csv', 'text/csv;charset=utf-8');
+        recordAudit('CSV export', 'Filtered user-activity.csv', users.length);
+        setStatus($('activity-status'), `Exported ${users.length} filtered activity record(s).`, 'ok');
+      } catch (error) { setStatus($('activity-status'), error.message, 'error'); }
+    });
+
+    async function removeActivity(user) {
+      if (activityMutation || activityPromise) return;
+      activityMutation = true;
+      try {
+        if (!await confirmDestructive('Delete activity record', `Delete tracking record for ${user.email || user.uid} (UID ${user.uid})? This does not delete their account or admin access.`)) return;
+        renderActivity();
+        setStatus($('activity-status'), 'Deleting activity record…');
+        await deleteUserActivity(user.uid);
+        activityUsers = activityUsers.filter(record => record.uid !== user.uid);
+        recordAudit('Activity deleted', `UID: ${user.uid}`, 1);
+        updateStats();
+        setStatus($('activity-status'), 'Activity record deleted. Account and admin access were not changed.', 'ok');
+      } catch (error) {
+        setStatus($('activity-status'), `Couldn't delete activity. ${friendlyFirestoreError(error)}`, 'error');
+        handleDataError(error);
+      } finally {
+        activityMutation = false;
+        const message = $('activity-status').textContent;
+        const type = $('activity-status').className.includes('is-error') ? 'error' : 'ok';
+        renderActivity();
+        setStatus($('activity-status'), message, type);
+      }
+    }
+
+    /* ---------------- Backup and maintenance ---------------- */
+    $('backup-download').addEventListener('click', async () => {
+      const button = $('backup-download');
+      button.disabled = true;
+      setStatus($('backup-status'), 'Preparing backup: loading all activity and admins…');
+      try {
+        if (activityMutation) throw new Error('Wait for activity maintenance to finish, then retry.');
+        if (!await ensureProducts()) throw new Error('Products could not be loaded. Retry the backup after checking your connection.');
+        const [users, admins] = await Promise.all([readCollection('userActivity'), readCollection('admins')]);
+        const now = new Date();
+        const filename = backupFilename(now);
+        const data = backupData(rows, users, admins, now);
+        const size = downloadFile(JSON.stringify(data, null, 2), filename, 'application/json');
+        recordAudit('Backup download', `${filename}; ${size} bytes`, rows.length + users.length + admins.length);
+        recordAudit('JSON export', filename, rows.length + users.length + admins.length);
+        setStatus($('backup-status'), `Downloaded ${filename} (${size.toLocaleString()} bytes): ${rows.length} products, ${users.length} activity records, ${admins.length} admins.`, 'ok');
+      } catch (error) {
+        setStatus($('backup-status'), `Backup failed; no file downloaded. ${error.message || friendlyFirestoreError(error)} Use Download JSON backup to retry.`, 'error');
+        handleDataError(error);
+      } finally { button.disabled = false; }
+    });
+
+    $('clear-activity').addEventListener('click', async () => {
+      if (activityMutation || activityPromise) {
+        setStatus($('maintenance-status'), 'Wait for the activity operation to finish, then retry.', 'warning');
+        return;
+      }
+      activityMutation = true;
+      $('clear-activity').disabled = true;
+      let deleted = 0;
+      let attempted = false;
+      let outcome = '';
+      let failed = false;
+      try {
+        if (!await confirmDestructive('Clear all user activity', 'Delete ALL userActivity records? This never deletes Auth accounts, admins, products, or orders. Returning users may create new activity records.')) return;
+        attempted = true;
+        renderActivity();
+        setStatus($('maintenance-status'), 'Checking current admin access and deleting activity in batches of at most 450…');
+        if (!await isAdmin({ force: true })) throw new Error('Admin access is required.');
+        const count = await clearUserActivity({ onProgress: count => {
+          deleted = count;
+          setStatus($('maintenance-status'), `Deleted ${count} activity record(s) so far. Maintenance is still running…`);
+        } });
+        deleted = count;
+        recordAudit('Activity cleared', 'All captured userActivity records deleted; accounts unchanged', count);
+        outcome = `Deleted ${count} captured activity record(s). Accounts and admin access were not changed; new activity may appear.`;
+      } catch (error) {
+        failed = true;
+        outcome = `Clear failed after ${deleted} confirmed deletion(s). Remaining records were not cleared. ${error.message || friendlyFirestoreError(error)} Retry to clear remaining records.`;
+        if (deleted) recordAudit('Activity clear partial', 'Clear failed; confirmed deletions only', deleted);
+        handleDataError(error);
+      } finally {
+        activityMutation = false;
+        $('clear-activity').disabled = false;
+        if (attempted) {
+          const refreshed = await loadActivity();
+          setStatus($('maintenance-status'), `${outcome}${refreshed ? '' : ' Activity refresh also failed; totals are unavailable.'}`, failed || !refreshed ? 'error' : 'ok');
+        } else renderActivity();
+      }
+    });
+
+    $('reset-orders').addEventListener('click', async () => {
+      $('reset-orders').disabled = true;
+      try {
+        if (!await confirmDestructive('Reset browser-local orders', 'Remove ONLY jgv3d_orders demo orders in this browser? No cart, account, or server data will be changed.')) return;
+        localStorage.removeItem('jgv3d_orders');
+        recordAudit('Demo orders reset', 'Removed browser-local jgv3d_orders');
+        loadOrders();
+        setStatus($('maintenance-status'), 'Browser-local demo orders reset. No other stored data was removed.', 'ok');
+      } catch (error) {
+        setStatus($('maintenance-status'), 'Order reset failed. Browser storage may be blocked. Retry to reset demo orders.', 'error');
+      } finally { $('reset-orders').disabled = false; }
+    });
 
     /* ---------------- Orders (browser-local, read-only) ---------------- */
     function loadOrders() {
@@ -714,12 +1225,13 @@
           ? `You are the only admin. Removing yourself means nobody can use this dashboard until an admin is added again in the Firebase Console. Remove yourself?`
           : 'Remove your own admin access? You will be signed out of this dashboard immediately.';
       }
-      if (!confirm(question)) return;
+      if (!await confirmDestructive('Remove admin access', question)) return;
       const status = $('admins-status');
       setStatus(status, 'Removing…');
       try {
         const { fs, db } = fb;
         await fs.deleteDoc(fs.doc(db, 'admins', uid));
+        recordAudit('Admin removed', `UID: ${uid}`, 1);
         clearAdminCache(uid);
         if (self) {
           location.replace('login.html?admin=denied');
@@ -770,6 +1282,7 @@
           addedBy: currentUid,
           addedAt: fs.serverTimestamp()
         });
+        recordAudit('Admin added', `UID: ${userDoc.id}`, 1);
         $('add-admin-email').value = '';
         await loadAdmins();
         setStatus(status, `${userDoc.get('email')} is now an admin.`, 'ok');
