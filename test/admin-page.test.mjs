@@ -8,6 +8,7 @@ import vm from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import * as shopTools from '../shop-csv.js';
 import * as adminTools from '../admin-tools.js';
+import * as accountData from '../account-data.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = name => readFileSync(path.join(root, name), 'utf8');
@@ -39,8 +40,12 @@ test('admin page renders data with textContent and never logs or stores secrets'
   assert.match(admin, /https:\/\/api\.github\.com\/repos\//);
 });
 
-test('orders are clearly labelled as browser-local demo data', () => {
-  assert.match(admin, /Orders are browser-local demo data/);
+test('orders tab separates Firestore account orders from labelled browser-local demo orders', () => {
+  assert.match(admin, /<h2>Account orders \(Firestore\)<\/h2>/);
+  assert.match(admin, /<h2>Local demo orders \(this browser only\)<\/h2>/);
+  assert.match(admin, /Local demo orders are browser-local demo data/);
+  assert.match(admin, /fs\.collectionGroup\(db, 'orders'\)/);
+  assert.match(admin, /from '\.\/account-data\.js'/);
 });
 
 test('activity tracking and admin helpers stay out of auth-firebase.js', () => {
@@ -114,7 +119,7 @@ const validProducts = () => [
   { id: 'gamma', title: 'Gamma', price: '30', img: 'images/c.png', status: 'in-stock' }
 ].map(product => shopTools.normalizeProduct(product));
 
-function fixture({ users = [], admins = [], failRead = false, failClear = false, failDelete = false, failDownload = false, denied = false, blockedStorage = false, csvText, publishImpl } = {}) {
+function fixture({ users = [], admins = [], orders = [], failOrders = false, failRead = false, failClear = false, failDelete = false, failDownload = false, denied = false, blockedStorage = false, csvText, publishImpl } = {}) {
   const elements = new Map();
   for (const match of admin.matchAll(/<([a-z][a-z0-9]*)\b([^>]*\bid="([^"]+)"[^>]*)>/g)) {
     const el = new Element(match[1]);
@@ -155,10 +160,20 @@ function fixture({ users = [], admins = [], failRead = false, failClear = false,
     where: (_, __, emails) => ({ emails }),
     limit: count => ({ count }),
     query: (name, ...options) => ({ name, emails: options.find(option => option.emails)?.emails }),
+    collectionGroup: (_, name) => `group:${name}`,
     getDocs: async name => {
       const emails = name.emails;
       name = name.name || name;
       reads.push(name);
+      if (name === 'group:orders') {
+        if (failOrders) throw Object.assign(new Error('denied'), { code: 'permission-denied' });
+        const docs = orders.map(order => ({
+          id: order.id,
+          ref: { parent: { id: 'orders', parent: { id: order.uid, parent: { id: 'users' } } } },
+          data: () => ({ ...order.data })
+        }));
+        return { docs, size: docs.length, empty: !docs.length, forEach: fn => docs.forEach(fn) };
+      }
       if (name === 'userActivity' && failActivity) throw Object.assign(new Error('offline'), { code: 'unavailable' });
       const records = (name === 'userActivity' ? currentUsers : admins).filter(record => !emails || emails.includes(record.email));
       const docs = records.map(record => ({ id: record.uid, data: () => ({ ...record }), get: key => record[key] }));
@@ -180,7 +195,7 @@ function fixture({ users = [], admins = [], failRead = false, failClear = false,
     body: new Element('body')
   };
   const context = vm.createContext({
-    ...shopTools, ...adminTools, document, Blob, TextEncoder, TextDecoder, Uint8Array, AbortController, crypto: webcrypto,
+    ...shopTools, ...adminTools, ...accountData, document, Blob, TextEncoder, TextDecoder, Uint8Array, AbortController, crypto: webcrypto,
     publishShop: options => publishImpl(options),
     createProductCreator: options => {
       creatorOptions = options;
@@ -226,7 +241,7 @@ function fixture({ users = [], admins = [], failRead = false, failClear = false,
     fb = { fs: globalThis.testFS, db: {} };
     currentUid = 'admin-current';
     globalThis.page = {
-      loadDashboard, loadActivity, renderActivity, renderProducts, ensureProducts, openForm, deleteProduct, removeActivity, removeAdmin, recordAudit, gate,
+      loadDashboard, loadActivity, renderActivity, loadOrders, loadAccountOrders, renderProducts, ensureProducts, openForm, deleteProduct, removeActivity, removeAdmin, recordAudit, gate,
       state: () => ({ rows, selected: [...selectedProducts], dirty, audit: audit.entries(), users: activityUsers, baseSha, stagedPhotos, publishing })
     };`, Object.assign(context, { testFS: fs }));
   return {
@@ -742,4 +757,38 @@ test('audit export failures show an explicit error and leave the session log int
     assert.equal(f.page.state().audit.length, 1);
     assert.equal(f.downloads.length, 0);
   }
+});
+
+test('orders tab lists every account order read-only, newest first, with customer and shipping summary', async () => {
+  const shipping = { firstName: 'Ada', lastName: 'L', streetAddress1: '1 Main', city: 'Austin', state: 'TX', postalCode: '78701', country: 'US', phone: '555', deliveryNotes: '<b>side door</b>' };
+  const f = fixture({
+    users: [{ uid: 'bob', email: 'bob@example.com' }],
+    orders: [
+      { id: 'JGV-00000001', uid: 'alice', data: { id: 'JGV-00000001', date: '2025-01-01T00:00:00.000Z', status: 'In Queue', items: [{ id: 'a', title: 'A', qty: 2, price: 10 }], total: 20, shipping, notes: '', email: 'alice@example.com' } },
+      { id: 'JGV-00000002', uid: 'bob', data: { id: 'JGV-00000002', date: '2025-02-01T00:00:00.000Z', status: 'Shipped', items: [{ id: 'b', title: 'B', qty: 1, price: 5 }], total: 5, shipping, notes: 'gift', email: '' } }
+    ]
+  });
+  await f.page.loadActivity();
+  f.page.loadOrders();
+  await f.page.loadAccountOrders();
+  const rows = f.get('account-order-rows').children;
+  assert.equal(rows.length, 2);
+  const text = row => row.children.map(td => td.textContent);
+  assert.deepEqual(text(rows[0]).slice(0, 2), ['JGV-00000002', 'bob@example.com'], 'email falls back to userActivity');
+  assert.equal(text(rows[0])[3], 'Shipped');
+  assert.match(text(rows[0])[6], /Ada L — 1 Main — Austin, TX, 78701, US · Phone: 555 · Delivery notes: <b>side door<\/b> · Order notes: gift/);
+  assert.deepEqual(text(rows[1]).slice(0, 2), ['JGV-00000001', 'alice@example.com']);
+  assert.equal(text(rows[1])[5], '$20.00');
+  assert.match(f.get('account-orders-status').textContent, /2 account order/);
+  assert.equal(f.get('order-rows').children.length, 1, 'local demo orders are still listed separately');
+  assert.equal(f.get('orders-refresh').disabled, false);
+});
+
+test('account order load errors are shown with retry and never touch local demo orders', async () => {
+  const f = fixture({ failOrders: true });
+  await f.page.loadAccountOrders();
+  assert.match(f.get('account-orders-status').textContent, /Couldn't load account orders. Permission denied/);
+  assert.match(f.get('account-orders-status').className, /is-error/);
+  assert.equal(f.get('orders-refresh').disabled, false);
+  assert.equal(f.storage.get('jgv3d_orders'), '[{"id":"demo"}]');
 });

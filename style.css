@@ -947,6 +947,223 @@ footer a:hover {
   text-align: center;
 }
 
+.cart-signin-note {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  background: #2a2a2a;
+  border: 1px solid #4a4a4a;
+  border-left: 4px solid #e67e22;
+  border-radius: 6px;
+  color: #ddd;
+  text-align: center;
+}
+
+.cart-signin-note a {
+  color: #e67e22;
+  font-weight: bold;
+}
+
+/* ==========================================================
+   Shipping details form (checkout dialog + account settings)
+   ========================================================== */
+
+.shipping-dialog {
+  width: min(640px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  padding: 24px;
+  background: #333;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+}
+
+.shipping-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.shipping-form h2 {
+  margin: 0 0 6px;
+  color: #e67e22;
+}
+
+.shipping-intro,
+.shipping-summary {
+  margin: 0 0 12px;
+  color: #bbb;
+  line-height: 1.4;
+}
+
+.shipping-summary {
+  color: #ff9800;
+  font-weight: bold;
+}
+
+.shipping-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 14px;
+}
+
+.shipping-field {
+  margin-bottom: 14px;
+  text-align: left;
+}
+
+.shipping-field-wide {
+  grid-column: 1 / -1;
+}
+
+.shipping-field label {
+  display: block;
+  margin-bottom: 6px;
+  color: #ddd;
+  font-size: 0.9em;
+  font-weight: bold;
+}
+
+.shipping-required {
+  color: #e67e22;
+}
+
+.shipping-field input,
+.shipping-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: #2a2a2a;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.95em;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.shipping-field textarea {
+  resize: vertical;
+}
+
+.shipping-field input:focus,
+.shipping-field textarea:focus {
+  border-color: #e67e22;
+  box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.2);
+}
+
+.shipping-field input[aria-invalid="true"],
+.shipping-field textarea[aria-invalid="true"] {
+  border-color: #e74c3c;
+}
+
+.shipping-field input:disabled,
+.shipping-field textarea:disabled {
+  opacity: 0.6;
+}
+
+.shipping-hint {
+  margin: 5px 0 0;
+  color: #999;
+  font-size: 0.8em;
+}
+
+.shipping-error {
+  margin: 5px 0 0;
+  color: #f5b7b1;
+  font-size: 0.85em;
+}
+
+.shipping-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 16px;
+  color: #ddd;
+  cursor: pointer;
+}
+
+.shipping-message {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: #2a2a2a;
+  border: 1px solid #4a4a4a;
+  border-radius: 6px;
+  font-size: 0.9em;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.shipping-message.is-error { border-left: 4px solid #e74c3c; color: #f5b7b1; }
+.shipping-message.is-success { border-left: 4px solid #28a745; color: #b8e0c2; }
+.shipping-message.is-info { border-left: 4px solid #e67e22; color: #ddd; }
+
+.shipping-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  color: #bbb;
+}
+
+.shipping-loading[hidden],
+.shipping-message[hidden],
+.shipping-error[hidden],
+.cart-signin-note[hidden] {
+  display: none;
+}
+
+.shipping-spinner {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #444;
+  border-top-color: #e67e22;
+  border-radius: 50%;
+  animation: shipping-spin 0.9s linear infinite;
+}
+
+@keyframes shipping-spin {
+  to { transform: rotate(360deg); }
+}
+
+.shipping-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.shipping-btn {
+  padding: 11px 18px;
+  border: none;
+  border-radius: 6px;
+  font-size: 1em;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, opacity 0.2s;
+}
+
+.shipping-btn-primary { background: #e67e22; color: #fff; }
+.shipping-btn-primary:hover { background: #d35400; }
+.shipping-btn-outline { background: transparent; color: #ddd; border: 1px solid #555; }
+.shipping-btn-outline:hover { border-color: #e67e22; color: #fff; }
+.shipping-btn-danger { background: transparent; color: #e74c3c; border: 1px solid #5a3330; }
+.shipping-btn-danger:hover { background: rgba(231, 76, 60, 0.12); border-color: #e74c3c; }
+.shipping-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.shipping-btn[hidden] { display: none; }
+
+.shipping-address {
+  font-style: normal;
+  line-height: 1.5;
+  color: #ddd;
+  white-space: pre-line;
+}
+
+@media (max-width: 560px) {
+  .shipping-dialog { padding: 18px; }
+  .shipping-grid { grid-template-columns: 1fr; }
+  .shipping-actions .shipping-btn { flex: 1 1 auto; }
+}
+
 /* ==========================================================
    Orders Pages
    ========================================================== */

@@ -157,8 +157,22 @@
       <!-- Orders Overview -->
       <section id="panel-orders" class="admin-panel" role="tabpanel" aria-labelledby="tab-orders" hidden>
         <div class="admin-card">
-          <h2>Orders overview</h2>
-          <p class="admin-note admin-warning"><strong>Orders are browser-local demo data.</strong> Checkout saves orders only in the shopper's own browser (<code>localStorage</code>). They are not sent to a server, so customers' orders can't be viewed or managed here. The table below only shows demo orders placed in <em>this</em> browser, read-only, for reference.</p>
+          <h2>Account orders (Firestore)</h2>
+          <p class="admin-note">Orders placed by signed-in buyers, saved in Firestore at <code>users/{uid}/orders/{orderId}</code> with their shipping details. Guests can't place orders. This table is read-only: change an order's status in the Firebase Console. Item prices and totals come from the buyer's browser, so confirm them before taking payment.</p>
+          <div class="admin-toolbar">
+            <button type="button" class="admin-btn admin-btn-outline" id="orders-refresh">Refresh account orders</button>
+          </div>
+          <p id="account-orders-status" class="admin-status" role="status"></p>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead><tr><th>Order</th><th>Customer</th><th>Date</th><th>Status</th><th>Items</th><th>Total</th><th>Ship to</th></tr></thead>
+              <tbody id="account-order-rows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="admin-card">
+          <h2>Local demo orders (this browser only)</h2>
+          <p class="admin-note admin-warning"><strong>Local demo orders are browser-local demo data.</strong> Before account orders existed, checkout saved demo orders only in the shopper's own browser (<code>localStorage</code>). They were never sent to a server. The table below only shows old demo orders saved in <em>this</em> browser, read-only, for reference; they are not imported into Firestore.</p>
           <p id="orders-status" class="admin-status" role="status"></p>
           <div class="admin-table-wrap">
             <table class="admin-table">
@@ -179,7 +193,7 @@
         </div>
         <div class="admin-card">
           <h2>Maintenance</h2>
-          <p class="admin-note admin-warning">Activity deletion removes tracking records only, never Firebase Auth accounts or admin access. Users can create new activity when they return. Order reset affects only demo orders in this browser, not carts or accounts.</p>
+          <p class="admin-note admin-warning">Activity deletion removes tracking records only, never Firebase Auth accounts or admin access. Users can create new activity when they return. Order reset affects only old demo orders in this browser, not Firestore account orders, carts or accounts.</p>
           <div class="admin-toolbar">
             <button type="button" class="admin-btn admin-btn-danger" id="clear-activity">Clear all user activity</button>
             <button type="button" class="admin-btn admin-btn-danger" id="reset-orders">Reset browser-local demo orders</button>
@@ -272,6 +286,7 @@
       parseShopCSV, serializeShopCSV, validateProduct, validateAll, normalizeProduct, applyBulkUpdate
     } from './shop-csv.js';
     import { activityTime, activityStats, filterActivity, exportTableCSV, backupData, backupFilename, createSessionAudit } from './admin-tools.js';
+    import { normalizeOrder, sortOrdersNewestFirst, summarizeShipping } from './account-data.js';
     import { createProductCreator } from './product-creator.js';
     import { publishShop } from './github-publish.js';
 
@@ -1425,15 +1440,63 @@
         } catch (error) { /* malformed demo data can still be reset */ }
         localStorage.removeItem('jgv3d_orders');
         recordAudit('Demo orders reset', 'Removed browser-local jgv3d_orders', orderCount);
-        loadOrders();
+        loadLocalOrders();
         setStatus($('maintenance-status'), 'Browser-local demo orders reset. No other stored data was removed.', 'ok');
       } catch (error) {
         setStatus($('maintenance-status'), 'Order reset failed. Browser storage may be blocked. Retry to reset demo orders.', 'error');
       } finally { $('reset-orders').disabled = false; }
     });
 
-    /* ---------------- Orders (browser-local, read-only) ---------------- */
+    /* ---------------- Orders (read-only) ---------------- */
     function loadOrders() {
+      loadLocalOrders();
+      loadAccountOrders();
+    }
+
+    // Every signed-in buyer's orders, via a collection-group query that
+    // firestore.rules only allows for admins.
+    const ACCOUNT_ORDER_LIMIT = 500;
+    let accountOrdersEpoch = 0;
+    async function loadAccountOrders() {
+      const epoch = ++accountOrdersEpoch;
+      const status = $('account-orders-status');
+      const body = $('account-order-rows');
+      setStatus(status, 'Loading account orders…');
+      body.textContent = '';
+      $('orders-refresh').disabled = true;
+      try {
+        const { fs, db } = fb;
+        const snap = await fs.getDocs(fs.query(fs.collectionGroup(db, 'orders'), fs.limit(ACCOUNT_ORDER_LIMIT)));
+        if (epoch !== accountOrdersEpoch) return;
+        const emailByUid = new Map(activityUsers.map(user => [user.uid, user.email]));
+        const orders = sortOrdersNewestFirst(snap.docs
+          .filter(doc => doc.ref?.parent?.parent?.parent?.id === 'users')
+          .map(doc => ({ ...normalizeOrder(doc.data(), doc.id), uid: doc.ref.parent.parent.id })));
+        for (const order of orders) {
+          const count = order.items.reduce((sum, item) => sum + item.qty, 0);
+          const customer = order.email || emailByUid.get(order.uid) || `UID ${order.uid}`;
+          const shipTo = [summarizeShipping(order.shipping), order.shipping.phone && `Phone: ${order.shipping.phone}`,
+            order.shipping.deliveryNotes && `Delivery notes: ${order.shipping.deliveryNotes}`, order.notes && `Order notes: ${order.notes}`]
+            .filter(Boolean).join(' · ');
+          const tr = document.createElement('tr');
+          tr.append(cell(order.id || '—'), cell(customer), cell(formatTime(order.date)), cell(order.status), cell(count),
+            cell(`$${order.total.toFixed(2)}`), cell(shipTo || '—'));
+          body.append(tr);
+        }
+        setStatus(status, orders.length
+          ? `${orders.length} account order(s)${snap.size >= ACCOUNT_ORDER_LIMIT ? ` (showing the first ${ACCOUNT_ORDER_LIMIT})` : ''}.`
+          : 'No account orders yet.', 'ok');
+      } catch (error) {
+        if (epoch !== accountOrdersEpoch) return;
+        setStatus(status, `Couldn't load account orders. ${friendlyFirestoreError(error)} Use Refresh to retry.`, 'error');
+        handleDataError(error);
+      } finally {
+        if (epoch === accountOrdersEpoch) $('orders-refresh').disabled = false;
+      }
+    }
+    $('orders-refresh').addEventListener('click', loadAccountOrders);
+
+    function loadLocalOrders() {
       const body = $('order-rows');
       body.textContent = '';
       let orders = [];
@@ -1585,7 +1648,8 @@
       const checks = [
         ['Read your own admins/{uid} document', () => fs.getDoc(fs.doc(db, 'admins', currentUid))],
         ['List the admins collection (admins only)', () => fs.getDocs(fs.query(fs.collection(db, 'admins'), fs.limit(1)))],
-        ['Read userActivity (admins only)', () => fs.getDocs(fs.query(fs.collection(db, 'userActivity'), fs.limit(1)))]
+        ['Read userActivity (admins only)', () => fs.getDocs(fs.query(fs.collection(db, 'userActivity'), fs.limit(1)))],
+        ['Read all account orders (admins only)', () => fs.getDocs(fs.query(fs.collectionGroup(db, 'orders'), fs.limit(1)))]
       ];
       let passed = 0;
       for (const [label, run] of checks) {

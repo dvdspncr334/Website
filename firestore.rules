@@ -3,12 +3,16 @@ rules_version = '2';
 // JGV3D Firestore security rules.
 //
 // Only the signed-in owner can read or write their own cart at
-// users/{uid}/carts/current. Admins (users with an admins/{uid} document)
-// can manage the admins list and read/delete userActivity. Everything else is
-// denied by default.
+// users/{uid}/carts/current. The owner can also read/write their saved
+// shipping address (users/{uid}/profile/shipping) and create/read their own
+// orders (users/{uid}/orders/{orderId}); orders can't be edited or deleted
+// from the site. Admins (users with an admins/{uid} document) can read every
+// order and saved address, manage the admins list and read/delete
+// userActivity. Everything else is denied by default.
 //
 // If your project already has rules for other data, MERGE the
-// `match` blocks (carts, admins, userActivity) and the helper functions into
+// `match` blocks (carts, profile/shipping, orders, admins, userActivity) and
+// the helper functions into
 // your existing rules instead of replacing them (see FIREBASE_SETUP.md).
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -65,6 +69,73 @@ service cloud.firestore {
         && resource.data.items is map
         && isValidCartWrite(resource.data.items);
       allow delete: if isCartOwner(uid, cartId);
+    }
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isText(value, minSize, maxSize) {
+      return value is string && value.size() >= minSize && value.size() <= maxSize;
+    }
+
+    // Every field is a string; optional fields may be empty.
+    function isValidAddress(a) {
+      return a is map
+        && a.keys().hasAll(['firstName', 'lastName', 'streetAddress1', 'streetAddress2', 'city',
+                            'state', 'postalCode', 'country', 'phone', 'deliveryNotes'])
+        && isText(a.firstName, 1, 80)
+        && isText(a.lastName, 1, 80)
+        && isText(a.streetAddress1, 1, 120)
+        && isText(a.streetAddress2, 0, 120)
+        && isText(a.city, 1, 80)
+        && isText(a.state, 1, 80)
+        && isText(a.postalCode, 1, 20)
+        && isText(a.country, 1, 60)
+        && isText(a.phone, 0, 40)
+        && isText(a.deliveryNotes, 0, 500);
+    }
+
+    function isValidOrder(orderId, data) {
+      return data.keys().hasAll(['id', 'date', 'createdAt', 'status', 'items', 'total', 'shipping', 'notes', 'email'])
+        && data.keys().hasOnly(['id', 'date', 'createdAt', 'status', 'items', 'total', 'shipping', 'notes', 'email'])
+        && data.id == orderId
+        && orderId.matches('JGV-[0-9]{8}')
+        && isText(data.date, 10, 40)
+        && data.createdAt == request.time
+        && data.status == 'In Queue'
+        && data.items is list && data.items.size() >= 1 && data.items.size() <= 50
+        && (data.total is int || data.total is float)
+        && data.total >= 0 && data.total <= 5000000
+        && data.shipping is map
+        && data.shipping.keys().hasOnly(['firstName', 'lastName', 'streetAddress1', 'streetAddress2', 'city',
+                                         'state', 'postalCode', 'country', 'phone', 'deliveryNotes'])
+        && isValidAddress(data.shipping)
+        && isText(data.notes, 0, 1000)
+        && data.email == request.auth.token.get('email', '');
+    }
+
+    // One saved shipping address per user.
+    match /users/{uid}/profile/shipping {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['firstName', 'lastName', 'streetAddress1', 'streetAddress2', 'city',
+                                                 'state', 'postalCode', 'country', 'phone', 'deliveryNotes', 'lastUpdated'])
+        && isValidAddress(request.resource.data)
+        && request.resource.data.lastUpdated == request.time;
+      allow delete: if isOwner(uid);
+    }
+
+    // Orders: the owner creates and reads their own; admins read all.
+    // No client can change or delete an order (use the Firebase Console).
+    match /users/{uid}/orders/{orderId} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isOwner(uid) && isValidOrder(orderId, request.resource.data);
+    }
+
+    // Lets admins list every user's orders with a collection-group query.
+    match /{path=**}/orders/{orderId} {
+      allow read: if isAdmin();
     }
 
     // Admin list. Users may read only their own admin document (to learn

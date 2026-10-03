@@ -73,9 +73,21 @@ Visit `https://dvdspncr334.github.io/login.html` and:
 - The Firebase SDK loads from the CDN, so if gstatic.com is unreachable the cart (guest carts included) shows an error with Retry instead of possibly showing the wrong cart.
 - **Old carts:** carts saved before this change under the unowned key `jgv3d_cart` (with `jgv3d_cart_selection`) are moved **once into the guest cart only** and never into any account. Those old carts had no owner, so on a shared browser the moved guest cart may contain items added by anyone who used that browser before.
 
-## Orders are still browser-local demo data
+## Orders and shipping addresses (signed-in buyers only)
 
-Checkout still creates **local demo orders** in this browser's `localStorage` (`jgv3d_orders`). Orders are **not** linked to your Firebase account, not synced between devices, and not private from other people using the same browser. This change doesn't move orders to Firestore. If saving the demo order fails, the cart is left as it was.
+**Guests can't place orders.** On the cart page, **Proceed to Checkout** is disabled for guests, and a "Sign in to place an order" message with a link to `login.html` is shown instead. Guest carts still work for browsing.
+
+| Data | Firestore path | Who can read | Who can write |
+| --- | --- | --- | --- |
+| Saved shipping address | `users/{uid}/profile/shipping` → `{ firstName, lastName, streetAddress1, streetAddress2, city, state, postalCode, country, phone, deliveryNotes, lastUpdated }` | That user, and admins | That user only (save/delete) |
+| Orders | `users/{uid}/orders/{orderId}` → `{ id, date, createdAt, status, items[{id,title,img,qty,price}], total, shipping{…address}, notes, email }` | That user, and admins (all users' orders) | That user can **create** only. Nobody can edit or delete an order from the site; change status in the Firebase Console. |
+
+- **Checkout:** clicking **Proceed to Checkout** opens a *Shipping details* dialog. It is filled in from the saved address if there is one. Required fields: first/last name, street address, city, state/region, postal code and country. Phone, apartment/suite, delivery notes and order notes are optional. All values are trimmed. **Place Order** saves the order to Firestore first (status `In Queue`, order number `JGV-########`), then removes the ordered items from the cart and goes to *My Orders*. If saving fails (permission denied, offline, …) the dialog stays open with an error, and the cart is not changed. Escape or **Cancel** closes the dialog without ordering.
+- **"Save this address for next time"** is unticked by default. The address is saved to the account only when it is ticked.
+- **Account → Settings** (on `login.html`; link straight to it with `login.html#settings`) shows the saved address, with **Edit/Add address**, **Save changes** and **Delete** (asks for confirmation). Past orders keep the address they were shipped to.
+- **Privacy:** each buyer sees only their own orders and address. Admins can read every order and address. Addresses and orders are **never stored in browser storage** (Firestore uses its in-memory cache). On sign-out or an account switch, the checkout dialog closes and the Settings form, orders list and order details are cleared, so the next person never sees the previous account's data.
+- **No payment is taken.** Item prices and totals come from the buyer's browser (the same values the cart shows), so confirm them with the buyer before charging.
+- **Old demo orders:** orders created before this change were saved only in the buyer's browser (`localStorage` key `jgv3d_orders`). They are left untouched and are **not** imported into Firestore. *My Orders* now shows only account orders; the admin *Orders* tab still lists the old demo orders stored in the admin's own browser, in a separately labelled table.
 
 ## Remaining Firebase Console / deployment steps (required for account carts)
 
@@ -86,10 +98,10 @@ This pull request **does not** create your database or publish rules. Until you 
    - Pick a **location close to most of your customers** (for example `us-central1`/`nam5` for the US, or `eur3`/`europe-west` for Europe). **The location can't be changed later.**
    - Start in **production mode**. Do **not** pick test mode, which leaves the database open to everyone.
 2. **Publish the security rules** from `firestore.rules` in this repo:
-   - **Console:** Firestore Database → **Rules**. If the editor already has rules for other collections, **keep them**, and paste only the `match /users/{uid}/carts/{cartId} { ... }` block plus the helper functions inside your existing `match /databases/{database}/documents { ... }`. Then click **Publish**.
+   - **Console:** Firestore Database → **Rules**. If the editor already has rules for other collections, **keep them**, and paste the helper functions and `match` blocks from `firestore.rules` (carts, `profile/shipping`, `orders`, the `{path=**}/orders` admin block, `admins`, `userActivity`) inside your existing `match /databases/{database}/documents { ... }`. Then click **Publish**.
    - **or CLI:** `npm install`, then `npx firebase login` and `npx firebase deploy --only firestore:rules --project jgv3d-fc043`. ⚠️ This **replaces** all published rules with `firestore.rules`, so merge any existing rules into that file first.
    - The rules allow reading or writing a cart only by the signed-in user whose uid matches `{uid}`. They check the cart's shape (at most 50 lines, quantity 1–99, limited text and price sizes) and deny everyone else.
-3. **Indexes:** none are needed. The cart is read as a single document.
+3. **Indexes:** none are needed. The cart and saved address are single documents; orders are listed without filters or sorting (sorted in the browser), so no composite or collection-group index is required.
 4. **Authorized domains:** make sure your live domain(s) are listed under Authentication → Settings → Authorized domains (`dvdspncr334.github.io` and any custom domain from `CNAME`).
 5. **Test on the live site** (open the browser console with F12 to check for errors):
    1. Signed out: add an item. It appears in the cart and the badge.
@@ -116,15 +128,17 @@ This pull request **does not** create your database or publish rules. Until you 
 | --- | --- | --- |
 | `admins/{uid}` → `{ email, addedBy, addedAt }` | Admins (or you, in the Firebase Console) | The user themselves (to check their own status) and admins |
 | `userActivity/{uid}` → `{ email, lastSignInAt, lastActiveAt }` | Each signed-in user, for themselves only (from `mini-cart.js` → `user-activity.js`, at most once every 15 minutes per browser session) | Admins only |
+| `users/{uid}/orders/{orderId}` (see [Orders and shipping addresses](#orders-and-shipping-addresses-signed-in-buyers-only)) | The buyer, create only | The buyer and admins (the *Orders* tab uses a collection-group query on `orders`) |
+| `users/{uid}/profile/shipping` | The buyer | The buyer and admins |
 
 `userActivity` stores only the email address, last sign-in time and last activity time. It isn't a full account list: only users who have signed in since this was deployed appear. Admins can delete activity records in the dashboard without deleting Firebase Auth accounts. Publish the latest `firestore.rules` to enable these admin-only deletes.
 
 ### Setup steps (one time)
 
-1. **Publish the updated rules** from `firestore.rules` (same way as for carts above: Console → Firestore Database → Rules, or `npx firebase deploy --only firestore:rules --project jgv3d-fc043`). The cart rules are unchanged; the new parts are the `isAdmin()` function and the `admins` and `userActivity` blocks.
+1. **Publish the updated rules** from `firestore.rules` (same way as for carts above: Console → Firestore Database → Rules, or `npx firebase deploy --only firestore:rules --project jgv3d-fc043`). The cart and admin rules are unchanged; the newest parts are the `isOwner()`, `isText()`, `isValidAddress()` and `isValidOrder()` functions and the `profile/shipping`, `orders` and `{path=**}/orders` blocks. Until these are published, checkout shows an "Access was denied" error and nothing is ordered.
 2. **Find your UID:** sign in on the live site, then go to Firebase Console → **Authentication → Users** and copy the *User UID* for your account.
 3. **Add the first admin by hand** (bootstrap). Clients can't create the first admin, so this must be done in the console: Firestore Database → **Data** → **Start collection** → Collection ID `admins` → Document ID = **your UID** (paste it exactly, don't use Auto-ID) → add a field such as `email` (string) with your email → **Save**. Any fields are fine; only the document's existence matters.
-4. Visit `/admin.html` while signed in. The dashboard should load. On the **Settings** tab, *Firestore rules status* should show three ✔ checks.
+4. Visit `/admin.html` while signed in. The dashboard should load. On the **Settings** tab, *Firestore rules status* should show four ✔ checks.
 5. **Add more admins** from Settings → *Admin users*: enter their email. They must have signed in to the site at least once after step 1 (so a `userActivity` record exists); otherwise you get a "No user with that email" error. Adding someone who is already an admin shows an error. Remove admins with the **Remove** button. If you remove the last admin, repeat step 3.
 
 ### Manual test checklist
@@ -138,7 +152,7 @@ This pull request **does not** create your database or publish rules. Until you 
 7. User Activity: search email, filter an inclusive date range by last sign-in, sort columns, and export the displayed rows as CSV. Delete an activity record only after both confirmations and typing `confirm-clear`; the Firebase Auth account is not deleted.
 8. Settings: download a JSON backup and check the filename, timestamp, products, users, admins and byte count. Products come from the in-memory CSV (including unsaved edits), not Firestore. No auth passwords or tokens are included.
 9. Settings Maintenance: clear activity only after both confirmations and typing `confirm-clear`. Publish the updated `firestore.rules` first: only current admins can delete activity. Deletes run in batches; a failed later batch does not undo earlier batches. Visitors still signed in may create new activity records afterward.
-10. Reset demo orders removes only `jgv3d_orders` in the viewing browser; carts, auth accounts and Firestore are untouched.
+10. Reset demo orders removes only `jgv3d_orders` in the viewing browser; carts, auth accounts and Firestore (including account orders) are untouched.
 11. Settings Audit log: check product edits, bulk updates, admin changes, clears and backups; export CSV/JSON, clear the log, and refresh to verify it resets. Audit entries are stored only in browser sessionStorage for this page session, never Firestore.
 12. Settings: add a second admin by email, then remove them. Then remove yourself → you are sent to `login.html` and `/admin.html` is denied again.
 
@@ -168,20 +182,34 @@ The raw-field editor remains available for existing products and advanced CSV ed
 - Download all export files and follow `README.txt`; verify their paths and the storefront after Pages deploys.
 - Change accounts or sign out during image processing/publication. Verify transient drafts/tokens are cleared and stale callbacks do not populate the next account.
 
-### Orders are not managed in the admin panel
+### Orders overview
 
-Orders are still **browser-local demo data** (see above). There is no server copy, so the admin panel **can't** see or manage customers' orders. The *Orders* tab shows any demo orders stored in the admin's own browser, read-only; Settings can reset only that browser's demo orders.
+The *Orders* tab has two clearly separated, read-only tables:
+
+- **Account orders (Firestore):** every signed-in buyer's orders (newest first, up to 500), with order number, customer email (stored on the order, or looked up from `userActivity`), date, status, item count, total, and a shipping summary including phone, delivery notes and order notes. Use **Refresh account orders** to reload. To change an order's status, edit `status` in Firebase Console → Firestore → `users/{uid}/orders/{orderId}` (use `In Queue`, `In Progress`, `Shipped` or `Completed`); the buyer sees it on *My Orders*.
+- **Local demo orders (this browser only):** old `jgv3d_orders` demo orders saved in the admin's own browser. Settings can reset only these.
+
+#### Manual order checks
+
+1. Signed out, add an item and open the cart: checkout is disabled with "Sign in to place an order".
+2. Sign in as A → Account → **Settings**: "No saved address…" is shown. Add an address, save, edit it, and check the summary.
+3. Cart → **Proceed to Checkout**: the form is pre-filled. Clear a required field and submit (error on that field). Go offline (DevTools → Network → Offline), submit (error, dialog stays open, cart unchanged), go online and retry: the order is placed, items leave the cart, and you are taken to *My Orders*. Open the order details to see the shipping address.
+4. Place another order with a different address and **without** ticking "Save this address": Settings still shows the old address.
+5. Sign out and sign in as B: Settings, checkout and *My Orders* show none of A's data. Opening A's order-details link shows "Order not found".
+6. Delete B's saved address in Settings, then check out: the form starts empty.
+7. As an admin, open *Orders*: orders from A and B are both listed.
+8. Rules (with `npm run test:rules`, or the Firestore Rules Playground): a non-admin can't read another user's orders/address, nobody can update/delete an order, and only admins can run the `orders` collection-group query.
 
 ### Not implemented (out of scope)
 
-- No full user-account list or account management (only the minimal `userActivity` records above), no payment processing, no shipping labels, no email notifications, and no live order syncing.
+- No full user-account list or account management (only the minimal `userActivity` records above), no payment processing, no shipping labels, no email notifications, no guest checkout, and no order-status editing from the site (use the Firebase Console).
 - No server-side "look up any Firebase Auth user by email": that needs the Admin SDK on a server. Lookup by email only finds users with a `userActivity` record.
 
 ## Developer checks
 
 ```bash
 npm install
-npm test            # unit tests (cart store, page wiring, auth module, admin helpers, shop CSV editor)
+npm test            # unit tests (cart store, page wiring, auth module, admin helpers, shop CSV editor, shipping/orders)
 npm run test:rules  # Firestore emulator rules tests (needs Java 11+; downloads the emulator)
 ```
 
