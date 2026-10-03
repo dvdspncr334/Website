@@ -28,7 +28,7 @@ async function page(filename) {
     return () => { entry.closed = true; };
   };
   const api = {
-    onUserChanged(callback) { authChanged = callback; },
+    onSessionChanged(callback) { authChanged = callback; },
     subscribeOrders: subscribe,
     subscribeOrder(uid, id, next, error) {
       assert.equal(id, 'JGV-00000001');
@@ -101,4 +101,19 @@ test('buyer details observe cancellation without completed progress, deletion an
   assert.match(root.innerHTML, /Please retry/);
   elements.get('order-retry-btn').listeners.click();
   assert.equal(subscriptions[2].uid, 'buyer-b');
+});
+
+test('anonymous guest-checkout sessions see only their own guest orders with a data-loss warning', async () => {
+  const { elements, subscriptions, changeUser } = await page('orders.html');
+  changeUser({ id: 'anon-guest', isAnonymous: true });
+  assert.equal(subscriptions[0].uid, 'anon-guest');
+  assert.equal(elements.get('orders-guest-note').hidden, false);
+  subscriptions[0].next([{ ...order, status: 'In Queue', guest: true, email: 'buyer@example.com' }]);
+  const card = elements.get('orders-list').children.at(-1).innerHTML;
+  assert.match(card, /Guest order<\/strong> — contact email: buyer@example\.com/);
+  changeUser({ id: 'account-a', isAnonymous: false });
+  assert.equal(subscriptions[0].closed, true);
+  assert.equal(elements.get('orders-guest-note').hidden, true);
+  changeUser(null);
+  assert.equal(elements.get('orders-guest-note').hidden, true);
 });

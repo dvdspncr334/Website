@@ -52,6 +52,13 @@ async function fixture(options = {}) {
     signInWithEmailAndPassword: authenticate('email'),
     createUserWithEmailAndPassword: authenticate('create'),
     sendPasswordResetEmail: async (...args) => { calls.push(['reset', ...args]); },
+    signInAnonymously: async instance => {
+      calls.push(['anonymous', instance]);
+      if (options.anonymousError) throw options.anonymousError;
+      const guest = { uid: 'anon-1', email: null, displayName: null, photoURL: null, isAnonymous: true, providerData: [] };
+      emit(guest);
+      return { user: guest };
+    },
     signOut: async instance => { calls.push(['signOut', instance]); emit(null); }
   };
   async function moduleFor(exports) {
@@ -99,7 +106,7 @@ test('onUserChanged reports sign-in, account switches and sign-out', async () =>
 test('sign-in helpers delegate to Firebase and map the user', async () => {
   const f = await fixture();
   const google = await f.api.signInWithGoogle();
-  assert.deepEqual({ ...google }, { id: 'uid-1', email: 'user@example.com', name: 'Ada', photoURL: '', provider: 'google.com' });
+  assert.deepEqual({ ...google }, { id: 'uid-1', email: 'user@example.com', name: 'Ada', photoURL: '', provider: 'google.com', isAnonymous: false });
   await f.api.createAccountWithEmail('new@example.com', 'pw-123456');
   await f.api.resetPassword('user@example.com');
   assert.deepEqual(f.calls.find(c => c[0] === 'create'), ['create', f.auth, 'new@example.com', 'pw-123456']);
@@ -126,4 +133,33 @@ test('login page uses the shared cart badge and never reads a shared cart key', 
   assert.match(html, /<script type="module" src="mini-cart\.js"><\/script>/);
   assert.match(html, /id="signout-btn"/);
   assert.doesNotMatch(html, /jgv3d_cart|localStorage/);
+});
+
+test('anonymous guest-checkout sessions are not accounts: onUserChanged/getSession report signed out', async () => {
+  const f = await fixture();
+  const accounts = [];
+  const sessions = [];
+  f.api.onUserChanged(u => accounts.push(u && u.id));
+  f.api.onSessionChanged(u => sessions.push(u && `${u.id}:${u.isAnonymous}`));
+  await Promise.resolve();
+  const guest = await f.api.signInAsGuest();
+  assert.equal(guest.id, 'anon-1');
+  assert.equal(guest.isAnonymous, true);
+  assert.equal(guest.provider, 'anonymous');
+  assert.equal(await f.api.getSession(), null, 'admin/account checks treat anonymous users as signed out');
+  // Reuses the existing anonymous session instead of creating another one.
+  await f.api.signInAsGuest();
+  assert.equal(f.calls.filter(c => c[0] === 'anonymous').length, 1);
+  await f.api.signInWithEmail('user@example.com', 'pw-123456');
+  assert.deepEqual(accounts, [null, null, 'uid-1']);
+  assert.deepEqual(sessions, [null, 'anon-1:true', 'uid-1:false']);
+  await assert.rejects(f.api.signInAsGuest(), { code: 'auth/already-signed-in' }, 'never replaces a signed-in account');
+});
+
+test('guest sign-in errors explain that anonymous auth must be enabled', async () => {
+  const error = { code: 'auth/operation-not-allowed' };
+  const f = await fixture({ anonymousError: error });
+  await assert.rejects(f.api.signInAsGuest(), e => e === error);
+  assert.match(f.api.friendlyGuestError(error), /Guest checkout isn't enabled/);
+  assert.equal(f.api.friendlyGuestError({ code: 'auth/network-request-failed' }), 'Network error. Check your connection and try again.');
 });

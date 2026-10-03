@@ -28,6 +28,9 @@
   <main class="cart-container">
     <h2>Your Orders</h2>
     <p class="order-page-note">Orders placed while signed in are saved to your account, so you can see them on any device. Only you and JGV3D can see them. Status updates are made by JGV3D.</p>
+    <div id="orders-guest-note" class="cart-status" role="note" hidden>
+      <span>You're viewing guest orders placed in this browser. Guest orders stay viewable here only while this browser keeps your guest session — clearing browser data (or signing in to an account) removes access. Save your order numbers and contact JGV3D with your order number if you need help. <a href="login.html">Create an account</a> for future orders; existing guest orders aren't moved into it.</span>
+    </div>
     <div id="orders-status" class="cart-status" role="status" aria-live="polite" hidden>
       <span id="orders-status-text"></span>
       <button type="button" class="cart-status-retry" id="orders-retry-btn" hidden>Retry</button>
@@ -52,6 +55,8 @@
     const retryBtn = document.getElementById('orders-retry-btn');
     let api = null;
     let currentUid = null;
+    let isGuestSession = false;
+    const guestNoteEl = document.getElementById('orders-guest-note');
     let epoch = 0;
     let unsubscribeOrders = null;
 
@@ -105,7 +110,7 @@
       list.innerHTML = `
         <section class="order-empty-state">
           <h3>Sign in to see your orders</h3>
-          <p>Orders are saved to your account. <a href="login.html">Sign in or create an account</a> to place and track orders.</p>
+          <p>Orders are saved to your account. <a href="login.html">Sign in or create an account</a> to track orders on any device. Guest orders placed in this browser also appear here while your guest session lasts.</p>
         </section>
       `;
     }
@@ -176,6 +181,7 @@
           </div>
 
           ${shipTo ? `<p class="order-card-copy"><strong>Ship to:</strong> ${escapeHTML(shipTo)}</p>` : ''}
+          ${order.guest ? `<p class="order-card-copy"><strong>Guest order</strong> — contact email: ${escapeHTML(order.email)}</p>` : ''}
           ${status === 'Cancelled' ? `<p class="order-card-copy">This order was cancelled.${order.cancellationReason ? ` Reason: ${escapeHTML(order.cancellationReason)}` : ''} Cancellation records status only; it does not process a refund.</p>` : ''}
 
           <div class="order-preview-list">
@@ -199,6 +205,7 @@
       if (unsubscribeOrders) unsubscribeOrders();
       unsubscribeOrders = null;
       list.innerHTML = '';
+      guestNoteEl.hidden = !(uid && isGuestSession);
       if (!uid) {
         setStatus('');
         renderSignedOut();
@@ -229,9 +236,11 @@
         setStatus('Couldn\'t connect to load your orders. Check your connection and try again.', { error: true, retry: true });
         return;
       }
-      // Clear the list immediately on sign-out or account switch.
-      api.onUserChanged(user => {
+      // Clear the list immediately on sign-out or account switch. Anonymous
+      // guest-checkout sessions see only their own guest orders.
+      api.onSessionChanged(user => {
         currentUid = user ? user.id : null;
+        isGuestSession = Boolean(user && user.isAnonymous);
         loadOrders();
       });
     }

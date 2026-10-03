@@ -193,6 +193,7 @@
     <section id="view-signed-out" hidden>
       <h2 id="auth-title">Welcome back</h2>
       <p class="auth-subtitle" id="auth-subtitle">Sign in to your JGV3D account.</p>
+      <p class="auth-subtitle" id="guest-session-note" hidden>You placed a guest order in this browser. Signing in or creating an account ends that guest session, and guest orders are not moved into your account (account linking isn't available yet). Note your order numbers first; you can always contact us with an order number.</p>
 
       <div class="auth-tabs" role="tablist">
         <button type="button" class="auth-tab active" data-mode="signin" role="tab">Sign In</button>
@@ -297,7 +298,7 @@
 
   <script type="module">
     import {
-      auth, onUserChanged, signInWithGoogle, signInWithEmail,
+      auth, onUserChanged, onSessionChanged, signInWithGoogle, signInWithEmail,
       createAccountWithEmail, resetPassword, signOut, friendlyError
     } from './auth-firebase.js';
     import { isAdmin } from './admin-auth.js';
@@ -532,6 +533,12 @@
         setShippingBusy('');
         showMessage($('shipping-message'), `Couldn't delete your address. ${friendlyAccountError(error)}`, 'error');
       }
+    });
+
+    // Anonymous guest-checkout sessions are treated as signed out (no account
+    // settings or saved address); only this note mentions them.
+    onSessionChanged((user) => {
+      $('guest-session-note').hidden = !(user && user.isAnonymous);
     });
 
     // Single source of truth: Firebase tells us when the user signs in or out.

@@ -648,3 +648,30 @@ test('details for an order without saved items show a readable empty state', asy
   assert.match(f.get('order-details-body').textContent, /No items were saved with this order\./);
   assert.match(f.get('order-details-body').textContent, /Order total: \$0\.00/);
 });
+
+test('guest orders show a Guest badge and contact email; status updates keep working for them', async () => {
+  const guest = order('anon-guest', 'JGV-00000009', { guest: true, email: 'guest.buyer@example.test' });
+  let records = [guest, order('buyer-b')];
+  const f = fixture({
+    list: async () => records,
+    update: async (path, status) => {
+      records = records.map(o => o.path === path ? { ...o, status } : o);
+      return records.find(o => o.path === path);
+    }
+  });
+  await f.ui.refresh();
+  const rows = f.get('account-order-rows').children;
+  const customer = row => row.children.find(cell => cell.className === 'admin-order-customer');
+  const guestRow = rows.find(row => customer(row).textContent.includes('guest.buyer@example.test'));
+  const accountRow = rows.find(row => row !== guestRow);
+  assert.equal(customer(guestRow).children[0].className, 'admin-guest-badge');
+  assert.equal(customer(guestRow).children[0].textContent, 'Guest');
+  assert.doesNotMatch(customer(accountRow).textContent, /Guest/);
+  f.ui.openDetails(guest.path);
+  assert.match(f.get('order-details-body').textContent, /Guest \(no account\)/);
+  assert.match(f.get('order-details-body').textContent, /Guest contact email: guest\.buyer@example\.test/);
+  f.get('order-next-status').value = 'Shipped';
+  await f.get('order-save-status').emit('click');
+  assert.equal(f.writes[0][0], guest.path);
+  assert.equal(f.writes[0][1], 'Shipped');
+});

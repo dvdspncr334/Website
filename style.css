@@ -1109,6 +1109,8 @@ footer a:hover {
 .shipping-loading[hidden],
 .shipping-message[hidden],
 .shipping-error[hidden],
+.shipping-checkbox[hidden],
+.shipping-field[hidden],
 .cart-signin-note[hidden] {
   display: none;
 }
@@ -2976,4 +2978,17 @@ footer a:hover {
   .admin-page .admin-orders-table td > * {
     grid-column: 1;
   }
+}
+
+.admin-guest-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #e67e22;
+  color: #fff;
+  font-size: 0.75em;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
