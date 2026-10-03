@@ -1,98 +1,96 @@
-// Firebase Authentication Module
-// Handles sign-in, sign-out, and session state
-
+// Firebase Authentication module (loaded from Google's CDN; works on GitHub Pages)
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
+import {
+  getAuth,
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut as firebaseSignOut
+} from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js';
 import { firebaseConfig } from './firebase-config.js';
 
-// Initialize Firebase
-let app, auth;
-let authReady = false;
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
-async function initializeFirebase() {
-  if (authReady) return;
-  
-  const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js');
-  const { getAuth } = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js');
-  
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  authReady = true;
+function toUser(u) {
+  if (!u) return null;
+  return {
+    id: u.uid,
+    email: u.email || '',
+    name: u.displayName || '',
+    photoURL: u.photoURL || '',
+    provider: (u.providerData[0] && u.providerData[0].providerId) || 'password'
+  };
 }
 
-export async function getSession() {
-  await initializeFirebase();
+// Subscribe to sign-in state changes. Returns an unsubscribe function.
+export function onUserChanged(callback) {
+  return onAuthStateChanged(auth, (u) => callback(toUser(u)));
+}
+
+// One-time check of the current user.
+export function getSession() {
   return new Promise((resolve) => {
-    auth.onAuthStateChanged((user) => {
-      if (user) {
-        resolve({
-          id: user.uid,
-          email: user.email,
-          name: user.displayName || 'User'
-        });
-      } else {
-        resolve(null);
-      }
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      unsubscribe();
+      resolve(toUser(u));
     });
   });
 }
 
 export async function signInWithGoogle() {
-  await initializeFirebase();
-  const { GoogleAuthProvider, signInWithPopup } = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js');
-  
-  const provider = new GoogleAuthProvider();
-  try {
-    const result = await signInWithPopup(auth, provider);
-    return {
-      id: result.user.uid,
-      email: result.user.email,
-      name: result.user.displayName
-    };
-  } catch (error) {
-    console.error('Google sign-in error:', error);
-    throw error;
-  }
+  const result = await signInWithPopup(auth, new GoogleAuthProvider());
+  return toUser(result.user);
 }
 
 export async function signInWithEmail(email, password) {
-  await initializeFirebase();
-  const { signInWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js');
-  
-  try {
-    const result = await signInWithEmailAndPassword(auth, email, password);
-    return {
-      id: result.user.uid,
-      email: result.user.email,
-      name: result.user.displayName || 'User'
-    };
-  } catch (error) {
-    console.error('Email sign-in error:', error);
-    throw error;
-  }
+  const result = await signInWithEmailAndPassword(auth, email, password);
+  return toUser(result.user);
 }
 
 export async function createAccountWithEmail(email, password) {
-  await initializeFirebase();
-  const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js');
-  
-  try {
-    const result = await createUserWithEmailAndPassword(auth, email, password);
-    return {
-      id: result.user.uid,
-      email: result.user.email,
-      name: result.user.displayName || 'User'
-    };
-  } catch (error) {
-    console.error('Account creation error:', error);
-    throw error;
-  }
+  const result = await createUserWithEmailAndPassword(auth, email, password);
+  return toUser(result.user);
 }
 
-export async function signOut() {
-  await initializeFirebase();
-  try {
-    await auth.signOut();
-  } catch (error) {
-    console.error('Sign-out error:', error);
-    throw error;
+export function resetPassword(email) {
+  return sendPasswordResetEmail(auth, email);
+}
+
+export function signOut() {
+  return firebaseSignOut(auth);
+}
+
+// Turn Firebase error codes into friendly messages. Returns null for errors
+// that should be ignored (e.g. the user closed the Google popup).
+export function friendlyError(error) {
+  switch (error && error.code) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'Incorrect email or password.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists. Try signing in instead.';
+    case 'auth/weak-password':
+      return 'Password must be at least 6 characters.';
+    case 'auth/invalid-email':
+    case 'auth/missing-email':
+      return 'Please enter a valid email address.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please wait a moment and try again.';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return null;
+    case 'auth/popup-blocked':
+      return 'Your browser blocked the sign-in popup. Allow popups for this site and try again.';
+    case 'auth/network-request-failed':
+      return 'Network error. Check your connection and try again.';
+    case 'auth/unauthorized-domain':
+      return 'Sign-in isn\'t enabled for this domain yet. Please contact support.';
+    default:
+      return 'Something went wrong. Please try again.';
   }
 }
