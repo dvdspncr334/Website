@@ -59,9 +59,19 @@ export function shipToSummary(raw) {
   return [name, place, s.country].filter(Boolean).join(' · ');
 }
 
-export function filterAdminOrders(orders, { id = '', status = '', email = '' } = {}) {
+// Account scopes classify the single all-accounts snapshot by the explicit
+// guest marker; legacy orders without `guest: true` are signed-in orders.
+export const ORDER_ACCOUNT_SCOPES = ['all', 'guest', 'signed-in'];
+export const ORDER_ACCOUNT_SCOPE_LABELS = { all: 'All accounts (guest and signed-in)', guest: 'Guest accounts only', 'signed-in': 'Signed-in accounts only' };
+
+export function orderAccountType(order) {
+  return order?.guest === true ? 'guest' : 'signed-in';
+}
+
+export function filterAdminOrders(orders, { id = '', status = '', email = '', account = 'all' } = {}) {
   const contains = (value, query) => String(value || '').toLowerCase().includes(query.trim().toLowerCase());
-  return orders.filter(order => contains(order.id, id) && (!status || order.status === status) && contains(order.email, email));
+  return orders.filter(order => (account === 'all' || orderAccountType(order) === account)
+    && contains(order.id, id) && (!status || order.status === status) && contains(order.email, email));
 }
 
 export function captureOrders(orders) {
@@ -137,10 +147,13 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     $('order-session-log').textContent = audit.map(entry => `${entry.action}: ${entry.count}${entry.status ? ` (${entry.status})` : ''}`).join('\n');
   }
   function filters() {
-    return { id: $('order-filter-id').value, status: $('order-filter-status').value, email: $('order-filter-email').value };
+    return { account: scope(), id: $('order-filter-id').value, status: $('order-filter-status').value, email: $('order-filter-email').value };
   }
-  function scope() { return $('order-scope').value === 'all' ? 'all' : 'own'; }
-  function scopeLabel() { return scope() === 'all' ? 'ALL accounts' : 'your signed-in admin account only'; }
+  function scope() { return ORDER_ACCOUNT_SCOPES.includes($('order-scope').value) ? $('order-scope').value : 'all'; }
+  function scopeLabel() { return ORDER_ACCOUNT_SCOPE_LABELS[scope()]; }
+  // The service is always asked for every account; account scope is applied client-side.
+  function listAll(actor) { return service.listOrders({ expectedUid: actor, scope: 'all' }); }
+  function scoped() { return filterAdminOrders(orders, { account: scope() }); }
   function visible() { return filterAdminOrders(orders, filters()); }
   function controls() {
     $('orders-refresh').disabled = busy || !uid;
@@ -150,7 +163,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     $('order-export-filtered').disabled = busy || !loaded || !visible().length;
     $('order-select-all').disabled = busy || !loaded || !visible().length;
     for (const id of ['order-filter-id', 'order-filter-status', 'order-filter-email']) $(id).disabled = busy || !uid;
-    $('order-selection-count').textContent = `${selected.size} selected by full document path; ${visible().length} matching of ${orders.length} loaded. Scope: ${scopeLabel()}.`;
+    $('order-selection-count').textContent = `${selected.size} selected by full document path; ${visible().length} matching of ${scoped().length} in scope (${orders.length} loaded). Scope: ${scopeLabel()}.`;
     $('order-select-all').checked = visible().length > 0 && visible().every(order => selected.has(order.path));
     $('order-next-status').disabled = busy || !uid || !detailPath;
     $('order-cancel-reason').disabled = busy || !uid || !detailPath;
@@ -256,10 +269,10 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     audit.length = 0;
     $('order-session-log').textContent = '';
     for (const id of ['order-filter-id', 'order-filter-status', 'order-filter-email']) $(id).value = '';
-    $('order-scope').value = 'own';
+    $('order-scope').value = 'all';
     clearDialogs();
     render();
-    message(uid ? 'Default scope: your own signed-in account. Select ALL accounts explicitly or refresh to load your orders.' : 'Sign in with current admin access to load account orders.');
+    message(uid ? 'Default scope: All accounts (guest and signed-in). Refresh to load account orders.' : 'Sign in with current admin access to load account orders.');
   }
   async function refresh() {
     if (!uid || busy) return;
@@ -274,12 +287,12 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     render();
     message(`Loading orders for ${scopeLabel()}; checking current admin access…`);
     try {
-      const result = await service.listOrders({ expectedUid: actor, scope: scope() });
+      const result = await listAll(actor);
       if (!current(token) || load !== request) return;
       orders = sortOrdersNewestFirst(result.map(order => ({ ...order, ...normalizeOrder(order, order.id) })));
       loaded = true;
       refreshRequired = false;
-      message(`${orders.length} account order(s). Scope: ${scopeLabel()}. Prices and totals are buyer-provided; verify before payment.`);
+      message(`${orders.length} account order(s) loaded; ${scoped().length} in scope: ${scopeLabel()}. Prices and totals are buyer-provided; verify before payment.`);
     } catch {
       if (!current(token) || load !== request) return;
       failed = true;
@@ -450,7 +463,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     $('order-private-export').checked = false;
     $('order-skip-backup').checked = false;
     danger = { kind: 'delete', captured, remaining: captured, scope: scopeDescription,
-      queryScope: scope(), accountScope: scopeLabel(), stage: 1, deleted: 0, exported: false };
+      account: scope(), accountScope: scopeLabel(), stage: 1, deleted: 0, exported: false };
     showDanger();
   }
   function showDanger() {
@@ -512,7 +525,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
       danger = null;
       let refreshed = false, orderMissing = false;
       try {
-        const records = await service.listOrders({ expectedUid: actor, scope: scope() });
+        const records = await listAll(actor);
         if (!current(token)) return;
         orders = sortOrdersNewestFirst(records.map(order => ({ ...order, ...normalizeOrder(order, order.id) })));
         refreshed = true;
@@ -588,7 +601,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
         close($('order-danger-dialog'));
         danger = null;
         try {
-          const records = await service.listOrders({ expectedUid: actor, scope: operation.queryScope });
+          const records = await listAll(actor);
           if (!current(token)) return;
           orders = sortOrdersNewestFirst(records.map(order => ({ ...order, ...normalizeOrder(order, order.id) })));
           selected = new Set([...selected].filter(path => orders.some(order => order.path === path)));
@@ -621,7 +634,15 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     }
   }
   $('orders-refresh').addEventListener('click', refresh);
-  $('order-scope').addEventListener('change', refresh);
+  $('order-scope').addEventListener('change', () => {
+    if (busy || !uid) return;
+    // Never carry selections or captured confirmations across account scopes.
+    selected.clear();
+    clearDialogs();
+    if (!loaded) return refresh();
+    render();
+    message(`${scoped().length} of ${orders.length} loaded account order(s) in scope: ${scopeLabel()}.`);
+  });
   for (const id of ['order-filter-id', 'order-filter-status', 'order-filter-email']) $(id).addEventListener('input', render);
   $('order-select-all').addEventListener('change', () => {
     for (const order of visible()) {
@@ -629,7 +650,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     }
     render();
   });
-  $('order-delete-selected').addEventListener('click', () => openDelete(orders.filter(order => selected.has(order.path)), 'Selected document paths (including hidden selections)'));
+  $('order-delete-selected').addEventListener('click', () => openDelete(scoped().filter(order => selected.has(order.path)), 'Selected document paths in current account scope (including filter-hidden selections)'));
   $('order-delete-filtered').addEventListener('click', () => openDelete(visible(), `Current filtered result: ${JSON.stringify(filters())}`));
   $('order-export-filtered').addEventListener('click', () => {
     if (!loaded || busy) return;

@@ -110,6 +110,7 @@
 - `test/shop-csv.test.mjs`: the real `data/shop.csv` parses, validates and round-trips; quoting; validation of ids, prices, pipe lists, paths and markup.
 - `test/admin-auth.test.mjs`: `isAdmin` sessionStorage cache per UID (TTL, force, clear, errors never cached); activity throttling.
 - `test/admin-page.test.mjs`: page gating/redirects, logout/back link, no cart badge, no `innerHTML`/console logging/token storage, account orders (Firestore) and labelled local demo orders.
+- `test/admin-order-ui.test.mjs`: Account scope dropdown (All accounts default, Guest accounts, Signed-in accounts) with registered buyers A/B, the current admin, guest orders, a legacy order without `guest`, and identical order IDs in different accounts: the service is always asked for all accounts, scope composes with filters, switching clears selections/dialogs, and filtered export/deletion, captured confirmations and post-mutation refetches keep the selected scope; stale reads after an account switch are discarded.
 
 ### Not executed in the development sandbox
 - `npm run test:rules` (new admin / userActivity emulator tests in `test/firestore-rules.test.mjs`): the Firestore emulator download was blocked. Run it locally before publishing the rules.

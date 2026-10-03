@@ -47,8 +47,9 @@ test('orders tab separates Firestore account orders from labelled browser-local 
   assert.match(admin, /Local demo orders are browser-local demo data/);
   assert.match(admin, /from '\.\/admin-orders\.js'/);
   assert.match(admin, /from '\.\/admin-order-ui\.js'/);
-  assert.match(admin, /Default scope: your signed-in admin account's own orders/);
-  assert.match(admin, /Select ALL accounts explicitly/);
+  assert.match(admin, /Default scope: All accounts/);
+  assert.match(admin, /<option value="all" selected>All accounts<\/option><option value="guest">Guest accounts<\/option><option value="signed-in">Signed-in accounts<\/option>/);
+  assert.doesNotMatch(admin, /Guests can't place orders|own orders|value="own"/);
   assert.match(admin, /Client session log \(non-authoritative\)/);
 });
 

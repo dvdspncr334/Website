@@ -108,7 +108,7 @@ test('all-account snapshot renders accessible path selection, per-order full det
   const rows = f.get('account-order-rows').children;
   assert.equal(rows.length, 2);
   assert.equal(rows[0].children[0].children[0].attributes['aria-label'], 'Select users/buyer-a/orders/same');
-  assert.match(f.get('order-selection-count').textContent, /ALL accounts/);
+  assert.match(f.get('order-selection-count').textContent, /Scope: All accounts/);
   f.ui.openDetails('users/buyer-a/orders/same');
   assert.equal(f.get('order-details-dialog').open, true);
   assert.equal(f.get('order-details-close').focused, true);
@@ -171,23 +171,147 @@ test('detail thumbnails never load remote or unsafe buyer-provided image paths a
   }
 });
 
-test('account scope defaults to own, all accounts requires explicit selection and switching resets captures', async () => {
+function scopedRecords() {
+  return [
+    order('buyer-a', 'JGV-00000001', { date: '2026-10-01T12:00:06Z' }),
+    order('buyer-b', 'JGV-00000001', { date: '2026-10-01T12:00:05Z', status: 'Shipped' }),
+    order('admin', 'JGV-00000002', { date: '2026-10-01T12:00:04Z' }),
+    order('guest-1', 'JGV-00000001', { date: '2026-10-01T12:00:03Z', guest: true, email: 'guest-one@example.test' }),
+    order('guest-2', 'JGV-00000003', { date: '2026-10-01T12:00:02Z', guest: true, email: 'guest-two@example.test', status: 'Shipped' }),
+    order('legacy', 'JGV-00000004', { date: '2026-10-01T12:00:01Z', email: '' })
+  ];
+}
+const paths = list => list.map(item => item.path);
+const GUEST_PATHS = ['users/guest-1/orders/JGV-00000001', 'users/guest-2/orders/JGV-00000003'];
+const SIGNED_IN_PATHS = ['users/buyer-a/orders/JGV-00000001', 'users/buyer-b/orders/JGV-00000001',
+  'users/admin/orders/JGV-00000002', 'users/legacy/orders/JGV-00000004'];
+
+test('account scope classifies only explicit guest:true orders as guest and composes with ID/status/email filters', () => {
+  const records = [...scopedRecords(), order('string-guest', 'JGV-00000005', { guest: 'true' })];
+  assert.equal(filterAdminOrders(records).length, 7, 'all accounts is the default');
+  assert.deepEqual(paths(filterAdminOrders(records, { account: 'guest' })), GUEST_PATHS);
+  assert.deepEqual(paths(filterAdminOrders(records, { account: 'signed-in' })),
+    [...SIGNED_IN_PATHS, 'users/string-guest/orders/JGV-00000005'], 'legacy orders without guest:true are signed-in');
+  assert.deepEqual(paths(filterAdminOrders(records, { account: 'guest', id: '00000001' })), ['users/guest-1/orders/JGV-00000001']);
+  assert.deepEqual(paths(filterAdminOrders(records, { account: 'signed-in', id: '00000001' })),
+    ['users/buyer-a/orders/JGV-00000001', 'users/buyer-b/orders/JGV-00000001']);
+  assert.deepEqual(paths(filterAdminOrders(records, { account: 'guest', status: 'Shipped' })), ['users/guest-2/orders/JGV-00000003']);
+  assert.deepEqual(paths(filterAdminOrders(records, { account: 'signed-in', email: 'BUYER-B' })), ['users/buyer-b/orders/JGV-00000001']);
+  assert.deepEqual(filterAdminOrders(records, { account: 'guest', email: 'buyer-a' }), []);
+});
+
+test('account scope defaults to all accounts, loads every buyer once and narrows guest/signed-in client-side', async () => {
   const scopes = [];
-  const f = fixture({ list: async options => { scopes.push(options.scope); return options.scope === 'own' ? [] : [order()]; } });
+  const f = fixture({ list: async options => { scopes.push(options.scope); return scopedRecords(); } });
   f.ui.setAccount('other-admin');
-  assert.equal(f.get('order-scope').value, 'own');
+  f.ui.setAccount('admin');
+  const options = f.get('order-scope');
+  assert.equal(options.value, 'all');
+  const html = readFileSync(new URL('../admin.html', import.meta.url), 'utf8');
+  const select = html.match(/<select[^>]*id="order-scope"[^>]*>([\s\S]*?)<\/select>/)[1];
+  assert.deepEqual([...select.matchAll(/<option value="([^"]+)"[^>]*>([^<]+)<\/option>/g)].map(match => [match[1], match[2]]),
+    [['all', 'All accounts'], ['guest', 'Guest accounts'], ['signed-in', 'Signed-in accounts']]);
   await f.ui.refresh();
-  assert.deepEqual(scopes, ['own']);
-  f.get('order-scope').value = 'all';
-  await f.get('order-scope').emit('change');
-  assert.deepEqual(scopes, ['own', 'all']);
+  const rowPaths = () => f.get('account-order-rows').children.map(row => row.children[1].children[1].children[1].textContent);
+  assert.equal(rowPaths().length, 6);
+  assert.match(f.get('order-selection-count').textContent, /6 matching of 6 in scope \(6 loaded\)\. Scope: All accounts/);
+  options.value = 'guest';
+  await options.emit('change');
+  assert.deepEqual(rowPaths(), GUEST_PATHS);
+  assert.match(f.get('order-selection-count').textContent, /2 matching of 2 in scope \(6 loaded\)\. Scope: Guest accounts only/);
+  assert.match(f.get('account-orders-status').textContent, /2 of 6 loaded account order\(s\) in scope: Guest accounts only/);
+  options.value = 'signed-in';
+  await options.emit('change');
+  assert.deepEqual(rowPaths(), SIGNED_IN_PATHS, 'registered buyers A and B, the admin and legacy orders are all signed-in');
+  f.get('order-filter-status').value = 'Shipped';
+  await f.get('order-filter-status').emit('input');
+  assert.deepEqual(rowPaths(), ['users/buyer-b/orders/JGV-00000001']);
+  options.value = 'guest';
+  await options.emit('change');
+  assert.deepEqual(rowPaths(), ['users/guest-2/orders/JGV-00000003'], 'filters compose with the new scope');
+  assert.deepEqual(scopes, ['all'], 'the service is only ever asked for all accounts');
+  options.value = 'bogus';
+  await options.emit('change');
+  assert.deepEqual(scopes, ['all']);
+  assert.match(f.get('order-selection-count').textContent, /Scope: All accounts/);
+});
+
+test('switching account scope clears selections and pending dialogs so no hidden cross-scope order is destroyed', async () => {
+  const f = fixture({ list: async () => scopedRecords() });
+  await f.ui.refresh();
+  f.get('order-select-all').checked = true;
+  await f.get('order-select-all').emit('change');
+  assert.equal(f.ui.state().selected.length, 6);
   f.ui.openDelete(f.ui.state().orders, 'Filtered');
-  assert.match(f.get('order-danger-description').textContent, /Account scope: ALL accounts/);
-  f.get('order-scope').value = 'own';
+  assert.match(f.get('order-danger-description').textContent, /Account scope: All accounts/);
+  f.get('order-scope').value = 'guest';
   await f.get('order-scope').emit('change');
-  assert.equal(f.get('order-danger-dialog').open, false);
+  assert.deepEqual(f.ui.state().selected, []);
   assert.equal(f.ui.state().danger, null);
-  assert.equal(f.ui.state().orders.length, 0);
+  assert.equal(f.get('order-danger-dialog').open, false);
+  assert.equal(f.get('order-delete-selected').disabled, true);
+  f.ui.openDetails(GUEST_PATHS[0]);
+  assert.equal(f.get('order-details-dialog').open, true);
+  f.get('order-scope').value = 'signed-in';
+  await f.get('order-scope').emit('change');
+  assert.equal(f.get('order-details-dialog').open, false);
+  assert.equal(f.get('order-detail-path').textContent, '');
+  f.get('order-select-all').checked = true;
+  await f.get('order-select-all').emit('change');
+  assert.deepEqual(f.ui.state().selected, SIGNED_IN_PATHS);
+  await f.get('order-delete-selected').emit('click');
+  assert.deepEqual(paths(f.ui.state().danger.captured), SIGNED_IN_PATHS);
+  assert.match(f.get('order-danger-description').textContent, /Account scope: Signed-in accounts only. EXACT captured documents: 4/);
+  assert.deepEqual(f.deletes, []);
+});
+
+test('filtered export and deletion capture exactly the scoped result and refetches keep the selected scope', async () => {
+  let records = scopedRecords();
+  const scopes = [];
+  const f = fixture({ list: async options => { scopes.push(options.scope); return records; },
+    remove: async removed => { records = records.filter(item => !removed.includes(item.path)); return { deletedPaths: removed }; } });
+  await f.ui.refresh();
+  f.get('order-scope').value = 'guest';
+  await f.get('order-scope').emit('change');
+  await f.get('order-export-filtered').emit('click');
+  assert.deepEqual(paths(JSON.parse(f.downloads[0][0]).orders), GUEST_PATHS);
+  f.get('order-filter-id').value = '00000001';
+  await f.get('order-filter-id').emit('input');
+  await f.get('order-delete-filtered').emit('click');
+  assert.match(f.get('order-danger-description').textContent, /"account":"guest".*Account scope: Guest accounts only. EXACT captured documents: 1/);
+  assert.equal(f.get('order-danger-paths').textContent, GUEST_PATHS[0]);
+  await prepareDelete(f);
+  await f.get('order-danger-confirm').emit('click');
+  assert.deepEqual(f.deletes[0][0], [GUEST_PATHS[0]], 'same order ID in signed-in accounts is never deleted');
+  assert.deepEqual(scopes, ['all', 'all']);
+  assert.equal(f.get('order-scope').value, 'guest');
+  f.get('order-filter-id').value = '';
+  await f.get('order-filter-id').emit('input');
+  assert.deepEqual(f.get('account-order-rows').children.map(row => row.children[1].children[0].textContent), ['JGV-00000003']);
+  assert.equal(f.ui.state().orders.length, 5, 'refetch still loads every account');
+  f.ui.openDetails(GUEST_PATHS[1]);
+  f.get('order-next-status').value = 'Completed';
+  await f.get('order-save-status').emit('click');
+  assert.deepEqual(scopes, ['all', 'all', 'all']);
+  assert.equal(f.get('order-scope').value, 'guest');
+  assert.match(f.get('order-selection-count').textContent, /1 matching of 1 in scope \(5 loaded\)\. Scope: Guest accounts only/);
+});
+
+test('scope cannot change while loading and a stale all-accounts read is discarded after an account switch', async () => {
+  let resolve;
+  const f = fixture({ list: () => new Promise(done => { resolve = done; }) });
+  const pending = f.ui.refresh();
+  assert.equal(f.get('order-scope').disabled, true);
+  f.get('order-scope').value = 'guest';
+  await f.get('order-scope').emit('change');
+  f.get('order-scope').value = 'all';
+  f.ui.setAccount('admin-2');
+  assert.equal(f.get('order-scope').value, 'all');
+  resolve(scopedRecords());
+  await pending;
+  assert.deepEqual(f.ui.state().orders, []);
+  assert.equal(f.get('account-order-rows').children.length, 0);
+  assert.equal(f.get('order-scope').disabled, false);
 });
 
 test('cancelled cancellation and deletion confirmations produce no writes, and reason is bounded', async () => {
