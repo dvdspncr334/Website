@@ -55,7 +55,7 @@ Visit `https://dvdspncr334.github.io/login.html` and:
 - `auth-firebase.js`: loads the Firebase Auth SDK (CDN version 10.7.0). It exports `app`, `auth`, `onUserChanged()`, `getSession()`, `signInWithGoogle()`, `signInWithEmail()`, `createAccountWithEmail()`, `resetPassword()` and `signOut()`.
 - `login.html`: Sign In / Create Account tabs, Google sign-in, "Forgot password?", and a signed-in account view.
 - Cart files (see below): `cart-store.js`, `cart-firebase.js`, `cart-service.js`, `mini-cart.js`, plus `firestore.rules`.
-- Admin files (see [Admin dashboard](#admin-dashboard)): `admin.html`, `admin-auth.js` (`isAdmin()`), `user-activity.js`, `shop-csv.js`.
+- Admin files (see [Admin dashboard](#admin-dashboard)): `admin.html`, `admin-auth.js` (`isAdmin()`), `user-activity.js`, `shop-csv.js`, `product-creator.js`, `product-photos.js`, `github-publish.js`.
 
 ## Carts: guest vs. account (strictly separate)
 
@@ -142,15 +142,31 @@ This pull request **does not** create your database or publish rules. Until you 
 11. Settings Audit log: check product edits, bulk updates, admin changes, clears and backups; export CSV/JSON, clear the log, and refresh to verify it resets. Audit entries are stored only in browser sessionStorage for this page session, never Firestore.
 12. Settings: add a second admin by email, then remove them. Then remove yourself → you are sent to `login.html` and `/admin.html` is denied again.
 
-### Shop CSV editor: what it can and can't do
+### Guided product creation and photo publishing
 
-- It loads the currently deployed `data/shop.csv`, lets you add, edit and delete products with validation (unique lowercase id, price as a number with up to 2 decimals, pipe-delimited `colors` / `pickup_configs`, `Color:path` pairs in `color_images`, `handedness` of both/right/left, `status` of in-stock/made-to-order/preorder, discount 0–100, no line breaks or `<`/`>`), and exports a CSV that `shop.html` reads the same way.
-- Edits only live in the page until you save them. There are two ways to save:
-  - **Download CSV** (always available): replace `data/shop.csv` in the repository with the downloaded file (for example on GitHub: open `data/shop.csv` → ✏️ Edit → paste, or *Add file → Upload files*) and commit.
-  - **Commit to GitHub** (optional): paste a [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new) limited to this repository with **Contents: Read and write**. The dashboard commits `data/shop.csv` through the GitHub API. The token stays in the page's memory only. It is never saved to browser storage or Firestore, is sent only to `api.github.com`, and is cleared after a successful commit. A static site has no server environment to keep a token in, so you paste it each time.
-- Rows that are completely empty (like the `,,,,` spacer line) and malformed rows are dropped when you save; the editor tells you if it skipped any.
-- The shop updates after GitHub Pages redeploys (usually a minute or two). Image files aren't uploaded by the editor; add new images to `images/` in the repository first and then reference their paths.
-- Before committing, the dashboard checks that `data/shop.csv` on GitHub is still the version you loaded. If it changed (another edit, or Pages hasn't redeployed your last commit yet), the commit is refused so nothing is overwritten. Download your CSV, reload, and redo the edit.
+1. Open **Shop → Create product with photos**, or choose **Duplicate template** beside an existing product. Duplication copies its settings and existing image references, but suggests a new unique ID. It does not change the original product.
+2. Enter the title, price and description. Review the suggested editable slug/ID. Choose existing categories/subcategories or enter custom lowercase dashed values. Set handedness, status, discount, badge and custom-color fee. Use the convenient colors/pickup controls instead of typing CSV delimiters. Unknown CSV columns and other products are retained.
+3. Drop photos into the photo area or use its keyboard-accessible file picker. Only decoded JPEG, PNG and WebP are accepted; SVG and executable files are rejected. Default limits are 10 MB per file, 12 photos per draft, 40 MB total and 40 megapixels per image; `PHOTO_LIMITS`/creator `photoOptions` configure bounded processing limits. Publication additionally caps the session at 20 photos and 40 MB including the CSV (CSV alone is capped at 2 MB). Review the dimensions and sizes. Resizing/compression is optional: the defaults limit the longest edge to 2000 pixels with quality 0.9, and keeping the original avoids re-encoding. PNG retains transparency; browser decoding handles orientation where supported. Check rotated/transparent images in your browser before publishing.
+4. Reorder/remove photos, select the main photo and associate variant photos with colors. Every saved photo must be the main image or a color variant; this is **not** an arbitrary product gallery. The storefront uses the existing `img` and `color_images` columns, not `gallery.csv`.
+5. Check the live card preview, choose **Review**, then **Save to list**. This only stages the product and files in memory. A thumbnail is **not** an uploaded image. Closing/reloading the page loses drafts; discard and reload actions ask for confirmation.
+6. Choose either publication or export:
+   - **Commit CSV + staged photos**: explicitly set owner, repository and branch. Enter your own [fine-grained personal access token](https://github.com/settings/personal-access-tokens/new), restricted to that repository with **Contents: Read and write**. Enter it only in the dashboard password field, never in chat. Firebase admin access does not grant GitHub permissions. The token goes only to `api.github.com` with redirects rejected; it is never stored in Firebase, browser storage, audit logs or exports, and is cleared on successful publication, signout and account change.
+   - **Export CSV + photos**: no token is needed. This prepares separate, individually clickable downloads rather than a ZIP. Download **every** listed file, including `README.txt`. Create the matching `images/products/{product-id}/` folders in the repository, upload images to the exact case-sensitive paths listed in the instructions, and replace `data/shop.csv`. Review concurrent repository edits and commit all files together. Export is **not** publication and performs no deployment verification.
+   - **Download CSV** still works for CSV-only edits. With staged photos it warns that CSV alone will reference missing assets and offers cancellation so you can use the photo export instead.
+
+GitHub publication uses the official [Git blobs](https://docs.github.com/en/rest/git/blobs), [trees](https://docs.github.com/en/rest/git/trees), [commits](https://docs.github.com/en/rest/git/commits) and [references](https://docs.github.com/en/rest/git/refs) APIs. The confirmation lists product changes and all files. Images receive generated filenames without overwriting existing repository images. One commit contains the CSV and referenced photos, based on the existing tree so unrelated files remain untouched. Before the non-forced branch update, the publisher checks the loaded CSV baseline and rechecks the branch head. Conflicts, protected branches, permissions and network failures preserve edits for retry/export. If the final update's response is lost, check the repository before retrying: publication may have succeeded despite the missing response. Cancel cannot roll back an update already accepted by GitHub.
+
+The site changes only **after GitHub Pages deployment**, which is not automatically verified here. Product images are **public site assets**, not private uploads. There is no Firebase Storage setup, billing change or Storage rule change. Customer carts and `gallery.csv` are untouched.
+
+The raw-field editor remains available for existing products and advanced CSV edits. Completely empty spacer rows are omitted, but malformed lines or ambiguous headers **block export/publication** to avoid silently losing unseen products. Repair the original CSV non-destructively in the repository and reload. If GitHub's CSV differs from the deployed copy (including while Pages is still deploying), export your edits before reloading and reconcile them with the latest repository copy.
+
+#### Manual acceptance checks
+
+- On desktop and mobile, check keyboard operation, errors, review/back navigation, discard confirmation, thumbnail reordering and main/color selection.
+- Try real JPEG (including EXIF-rotated), transparent PNG and WebP images, an invalid/mislabeled image, SVG, and files exceeding configured limits; confirm dimensions, quality and final filenames.
+- With a repository-scoped test token, confirm a single commit includes images and CSV while retaining unrelated files. Test permission denial, network interruption, conflict and retry. Inspect the repository after an interrupted final branch update.
+- Download all export files and follow `README.txt`; verify their paths and the storefront after Pages deploys.
+- Change accounts or sign out during image processing/publication. Verify transient drafts/tokens are cleared and stale callbacks do not populate the next account.
 
 ### Orders are not managed in the admin panel
 

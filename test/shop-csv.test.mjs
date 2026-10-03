@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  SHOP_COLUMNS, parseShopCSV, serializeShopCSV, validateProduct, validateAll, applyBulkUpdate
+  SHOP_COLUMNS, parseShopCSV, serializeShopCSV, validateProduct, validateAll, applyBulkUpdate, normalizeProduct
 } from '../shop-csv.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -39,6 +39,38 @@ test('rows with the wrong column count are reported as skipped', () => {
   const { rows, skipped } = parseShopCSV('id,title\na,b\nbroken\n,\nc,d\n');
   assert.deepEqual(rows.map(r => r.id), ['a', 'c']);
   assert.deepEqual(skipped, [3]);
+});
+
+test('unbalanced or misplaced quotes and ambiguous headers are reported, not silently rewritten', () => {
+  for (const line of ['a,"unfinished', 'a,b"c"', 'a,"b"trailing', ',"']) {
+    const parsed = parseShopCSV(`id,title\n${line}\nsafe,"Quoted ""title"", with comma"\n`);
+    assert.deepEqual(parsed.skipped, [2]);
+    assert.equal(parsed.rows.length, 1);
+    assert.equal(parsed.rows[0].title, 'Quoted "title", with comma');
+  }
+  for (const header of ['id,id', 'id,', '"id,title']) {
+    assert.deepEqual(parseShopCSV(`${header}\na,b\n`).skipped, [1]);
+  }
+});
+
+test('unknown columns and colon-containing color paths survive adding a product', () => {
+  const original = { ...valid, future_field: 'Keep "this", too' };
+  const headers = [...SHOP_COLUMNS, 'future_field'];
+  const parsed = parseShopCSV(serializeShopCSV(headers, [original]));
+  parsed.rows.push({ ...valid, id: 'new-product', future_field: 'new value' });
+  const exported = parseShopCSV(serializeShopCSV(parsed.headers, parsed.rows));
+  assert.deepEqual(exported.rows[0], original);
+  assert.equal(exported.rows[1].color_images, 'Red:images/a.png|Blue:https://example.com/b.png');
+});
+
+test('unknown columns named like object properties are preserved as CSV data', () => {
+  const headers = [...SHOP_COLUMNS, '__proto__', 'constructor'];
+  const original = { ...valid, ['__proto__']: 'retain this column', constructor: 'retain that column' };
+  const normalized = normalizeProduct(original, headers);
+  const parsed = parseShopCSV(serializeShopCSV(headers, [normalized]));
+  assert.equal(parsed.rows[0].__proto__, 'retain this column');
+  assert.equal(parsed.rows[0].constructor, 'retain that column');
+  assert.equal(Object.getPrototypeOf(parsed.rows[0]), Object.prototype);
 });
 
 test('a valid product has no errors', () => {

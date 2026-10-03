@@ -1995,6 +1995,87 @@ footer a:hover {
   display: none !important;
 }
 
+.creator-field,
+.creator-photos > label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+
+.product-creator input:not([type="checkbox"]),
+.product-creator textarea,
+.product-creator select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #555;
+  border-radius: 6px;
+  background: #161616;
+  color: #eee;
+  font: inherit;
+}
+
+.product-creator button {
+  padding: 9px 12px;
+  margin: 4px;
+  border: 1px solid #e67e22;
+  border-radius: 6px;
+  background: #252525;
+  color: #eee;
+  cursor: pointer;
+}
+
+.product-creator button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.product-creator :focus-visible {
+  outline: 2px solid #f0b27a;
+  outline-offset: 3px;
+}
+
+.creator-dropzone {
+  padding: 20px;
+  margin: 16px 0;
+  border: 2px dashed #e67e22;
+  border-radius: 8px;
+}
+
+.creator-photo,
+.creator-preview,
+.creator-review {
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid #555;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.creator-photo label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px;
+}
+
+.creator-errors {
+  color: #ff8a80;
+}
+
+.creator-preview img {
+  object-fit: contain;
+}
+
+#photo-export-files a,
+#staged-photo-list {
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  white-space: normal;
+}
+
 .admin-checklist {
   list-style: none;
   padding: 0;
@@ -2023,6 +2104,10 @@ footer a:hover {
 
   .admin-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .creator-fields {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 
   .admin-card {

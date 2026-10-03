@@ -43,6 +43,28 @@ export function parseCSVLine(line) {
   return values;
 }
 
+function isWellFormedLine(line) {
+  let quoted = false;
+  let closed = false;
+  let value = '';
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"') {
+      if (quoted && line[i + 1] === '"') { i += 1; continue; }
+      if (!quoted && (closed || value.trim())) return false;
+      quoted = !quoted;
+      if (!quoted) closed = true;
+    } else if (char === ',' && !quoted) {
+      closed = false;
+      value = '';
+    } else {
+      if (closed && char.trim()) return false;
+      value += char;
+    }
+  }
+  return !quoted;
+}
+
 // Returns { headers, rows, skipped } where skipped lists 1-based line numbers
 // of rows whose column count doesn't match the header (shop.html skips them too).
 export function parseShopCSV(text) {
@@ -50,6 +72,10 @@ export function parseShopCSV(text) {
   let headerIndex = lines.findIndex(line => line.trim());
   if (headerIndex < 0) return { headers: [...SHOP_COLUMNS], rows: [], skipped: [] };
   const fileHeaders = parseCSVLine(lines[headerIndex].trim());
+  if (!isWellFormedLine(lines[headerIndex]) || fileHeaders.some(h => !h) ||
+      new Set(fileHeaders).size !== fileHeaders.length) {
+    return { headers: [...SHOP_COLUMNS], rows: [], skipped: [headerIndex + 1] };
+  }
   const headers = [...fileHeaders, ...SHOP_COLUMNS.filter(c => !fileHeaders.includes(c))];
   const rows = [];
   const skipped = [];
@@ -57,13 +83,12 @@ export function parseShopCSV(text) {
     const line = lines[i].trim();
     if (!line) continue;
     const values = parseCSVLine(line);
-    if (values.every(v => !v)) continue; // rows of only commas are spacers
-    if (values.length !== fileHeaders.length) {
+    if (!isWellFormedLine(line) || values.length !== fileHeaders.length) {
       skipped.push(i + 1);
       continue;
     }
-    const row = {};
-    headers.forEach((h, idx) => { row[h] = idx < values.length ? values[idx] : ''; });
+    if (values.every(v => !v)) continue; // rows of only commas are spacers
+    const row = Object.fromEntries(headers.map((h, idx) => [h, idx < values.length ? values[idx] : '']));
     rows.push(row);
   }
   return { headers, rows, skipped };
@@ -100,9 +125,7 @@ function pipeList(value) {
 // Trims every field and returns a new product object with only known columns
 // plus any extra columns present in `headers`.
 export function normalizeProduct(product, headers = SHOP_COLUMNS) {
-  const out = {};
-  for (const h of headers) out[h] = product && product[h] != null ? String(product[h]).trim() : '';
-  return out;
+  return Object.fromEntries(headers.map(h => [h, product && product[h] != null ? String(product[h]).trim() : '']));
 }
 
 // Validates one product. `others` are the remaining products (used for the
