@@ -115,6 +115,59 @@ test('all-account snapshot renders accessible path selection, per-order full det
   assert.match(f.get('order-details-body').textContent, /Order total: \$20\.00/);
 });
 
+test('order details organize full synthetic customer data and intact amounts without interpreting markup', async () => {
+  const record = order('synthetic', 'long-order-id-'.repeat(12), {
+    email: `${'long-email-'.repeat(10)}@example.test`,
+    notes: '<script>not executable</script>' + 'Long notes. '.repeat(60).trim(),
+    status: 'Shipped',
+    items: [{ id: 'long-item-id', title: '<img onerror=alert(1)> Synthetic guitar', img: 'images/Telecaster/Blank/white.PNG', qty: 3, price: 1234.56 }],
+    total: 3703.68
+  });
+  const f = fixture({ list: async () => [record] });
+  await f.ui.refresh();
+  f.ui.openDetails(record.path);
+  const body = f.get('order-details-body');
+  const descendants = element => [element, ...element.children.flatMap(descendants)];
+  const elements = descendants(body);
+  const info = elements.find(element => element.className === 'admin-order-info');
+  assert.equal(info.children.length, 2);
+  assert.match(info.children[0].textContent, /Customer.*long-email/);
+  assert.match(info.children[1].textContent, /Shipping address[\s\S]*Side door/);
+  assert.ok(f.get('order-details-title').textContent.includes(record.id));
+  assert.equal(f.get('order-detail-path').textContent, record.path);
+  assert.ok(body.textContent.includes(record.notes));
+  assert.equal(elements.filter(element => element.tagName === 'script').length, 0);
+  assert.deepEqual(elements.filter(element => element.className === 'admin-money').map(element => element.textContent),
+    ['$1234.56', '$3703.68', '$3703.68']);
+  const image = elements.find(element => element.tagName === 'img');
+  assert.equal(image.src, record.items[0].img);
+  assert.equal(image.alt, '');
+  await image.emit('error');
+  assert.equal(image.src, 'images/placeholder.png');
+  assert.ok(elements.some(element => element.className === 'order-status status-shipped'));
+  const row = f.get('account-order-rows').children[0];
+  assert.equal(row.children[6].className, 'admin-money');
+  assert.equal(row.children[8].className, 'admin-actions');
+  assert.deepEqual(f.writes, []);
+  assert.deepEqual(f.deletes, []);
+});
+
+test('detail thumbnails never load remote or unsafe buyer-provided image paths and missing shipping remains legible', async () => {
+  for (const img of ['', 'javascript:alert(1)', 'https://example.test/tracker.png', '//example.test/a.png',
+    'images/../private.png', 'images/test.png" onerror="alert(1)']) {
+    const record = order('synthetic', 'empty-shipping', { shipping: {}, items: [{ id: 'test', title: 'Synthetic', qty: 1, price: 0, img }] });
+    const f = fixture({ list: async () => [record] });
+    await f.ui.refresh();
+    f.ui.openDetails(record.path);
+    const descendants = element => [element, ...element.children.flatMap(descendants)];
+    const images = descendants(f.get('order-details-body')).filter(element => element.tagName === 'img');
+    assert.equal(images.length, 1);
+    assert.equal(images[0].src, 'images/placeholder.png');
+    assert.match(f.get('order-details-body').textContent, /no shipping address saved/);
+    assert.match(f.get('order-details-body').textContent, /Delivery notes: \(none\)/);
+  }
+});
+
 test('account scope defaults to own, all accounts requires explicit selection and switching resets captures', async () => {
   const scopes = [];
   const f = fixture({ list: async options => { scopes.push(options.scope); return options.scope === 'own' ? [] : [order()]; } });

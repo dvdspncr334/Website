@@ -36,8 +36,9 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
   const openers = new Map(), detailButtons = new Map();
   const audit = [];
   const current = token => token === epoch && Boolean(uid);
-  const cell = text => {
+  const cell = (text, className = '') => {
     const element = document.createElement('td');
+    element.className = className;
     element.textContent = String(text ?? '—');
     return element;
   };
@@ -49,6 +50,13 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     element.disabled = busy || !loaded;
     element.addEventListener('click', action);
     return element;
+  };
+  const statusBadge = status => {
+    const badge = document.createElement('span');
+    const classes = ['status-queued', 'status-in-progress', 'status-shipped', 'status-completed', 'status-cancelled'];
+    badge.className = `order-status ${classes[ADMIN_ORDER_STATUSES.indexOf(status)] || 'status-queued'}`;
+    badge.textContent = status;
+    return badge;
   };
   function message(text, error = false) {
     $('account-orders-status').textContent = text;
@@ -99,12 +107,14 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
       path.className = 'admin-order-path';
       path.textContent = order.path;
       identity.append(document.createElement('br'), path);
-      const actions = cell('');
+      const actions = cell('', 'admin-actions');
       const detailsButton = button('Details / status', () => openDetails(order.path));
       detailButtons.set(order.path, detailsButton);
       actions.append(detailsButton, button('Delete', () => openDelete([order], 'Individual document'), true));
+      const status = cell('');
+      status.append(statusBadge(order.status));
       row.append(checkCell, identity, cell(order.email || `UID ${order.uid}`), cell(formatTime(order.date)),
-        cell(order.status), cell(order.items.reduce((sum, item) => sum + item.qty, 0)), cell(`$${order.total.toFixed(2)}`),
+        status, cell(order.items.reduce((sum, item) => sum + item.qty, 0)), cell(`$${order.total.toFixed(2)}`, 'admin-money'),
         cell(summarizeShipping(order.shipping) || '—'), actions);
       $('account-order-rows').append(row);
     }
@@ -201,7 +211,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     body.textContent = '';
     const text = value => {
       const paragraph = document.createElement('p');
-      paragraph.className = 'admin-order-json';
+      paragraph.className = 'admin-order-copy';
       paragraph.textContent = value;
       return paragraph;
     };
@@ -210,9 +220,23 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
       element.textContent = value;
       return element;
     };
-    body.append(text(`Customer email: ${order.email || '(not saved)'}`),
-      text(`Placed: ${formatTime(order.date)}`), text(`Current status: ${order.status}`),
-      heading('Order items'));
+    const summary = document.createElement('div');
+    summary.className = 'admin-order-summary';
+    summary.append(text(`Placed: ${formatTime(order.date)}`), statusBadge(order.status));
+    const grid = document.createElement('div');
+    grid.className = 'admin-order-info';
+    const customer = document.createElement('section');
+    customer.append(heading('Customer'), text(`Customer email: ${order.email || '(not saved)'}`),
+      text(`Order notes: ${order.notes || '(none)'}`),
+      text(`Cancellation reason: ${order.cancellationReason || '(none recorded)'}`));
+    const shipping = document.createElement('section');
+    const address = document.createElement('address');
+    address.className = 'admin-order-copy';
+    address.textContent = formatShippingLines(order.shipping).join('\n') || '(no shipping address saved)';
+    shipping.append(heading('Shipping address'), address,
+      text(`Delivery notes: ${order.shipping.deliveryNotes || '(none)'}`));
+    grid.append(customer, shipping);
+    body.append(summary, grid, heading('Order items'));
     const table = document.createElement('table');
     table.className = 'admin-table';
     const head = document.createElement('thead');
@@ -227,21 +251,28 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     const rows = document.createElement('tbody');
     for (const item of order.items) {
       const row = document.createElement('tr');
-      row.append(cell(`${item.title} (${item.id})`), cell(item.qty), cell(`$${item.price.toFixed(2)}`), cell(`$${(item.price * item.qty).toFixed(2)}`));
+      const identity = cell('', 'admin-order-item');
+      const image = document.createElement('img');
+      const localImage = /^(?:\.\/)?images\/[a-z0-9_./ -]+\.(?:png|jpe?g|webp|gif|avif)$/i.test(item.img) && !item.img.includes('..');
+      image.src = localImage ? item.img : 'images/placeholder.png';
+      image.alt = '';
+      image.loading = 'lazy';
+      image.addEventListener('error', () => { image.src = 'images/placeholder.png'; }, { once: true });
+      identity.append(image, text(`${item.title} (${item.id})`));
+      row.append(identity, cell(item.qty), cell(`$${item.price.toFixed(2)}`, 'admin-money'), cell(`$${(item.price * item.qty).toFixed(2)}`, 'admin-money'));
       rows.append(row);
     }
     table.append(head, rows);
     const wrap = document.createElement('div');
     wrap.className = 'admin-table-wrap';
     wrap.append(table);
-    const address = document.createElement('address');
-    address.className = 'admin-order-json';
-    address.textContent = formatShippingLines(order.shipping).join('\n') || '(no shipping address saved)';
-    body.append(wrap, text(`Order total: $${order.total.toFixed(2)} — buyer-provided; verify before payment.`),
-      heading('Shipping address'), address,
-      text(`Delivery notes: ${order.shipping.deliveryNotes || '(none)'}`),
-      text(`Order notes: ${order.notes || '(none)'}`),
-      text(`Cancellation reason: ${order.cancellationReason || '(none recorded)'}`));
+    const total = document.createElement('div');
+    total.className = 'admin-order-total';
+    const amount = document.createElement('strong');
+    amount.className = 'admin-money';
+    amount.textContent = `$${order.total.toFixed(2)}`;
+    total.append(text('Order total: '), amount);
+    body.append(wrap, total);
   }
   function openDetails(path) {
     if (busy || !loaded) return;

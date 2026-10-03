@@ -160,11 +160,11 @@
           <h2>Account orders (Firestore)</h2>
           <p class="admin-note"><strong>Default scope: your signed-in admin account's own orders. Select ALL accounts explicitly to manage other customers' orders.</strong> Orders placed by signed-in buyers are saved at <code>users/{uid}/orders/{orderId}</code>. Guests can't place orders. Item prices and totals come from the buyer's browser; verify them before taking payment. Refresh loads a current snapshot, not a live subscription.</p>
           <p class="admin-note admin-warning">Status changes and deletion affect order records only: no refunds, payments, shipping notifications or stock adjustments. Private JSON exports contain customer data: download only when needed, keep them secure, and never share them publicly.</p>
-          <div class="admin-toolbar">
-            <label>Account scope <select id="order-scope"><option value="own">My signed-in account's orders (default)</option><option value="all">ALL accounts — admin access required</option></select></label>
-            <label>Order ID <input id="order-filter-id" type="search" autocomplete="off"></label>
-            <label>Status <select id="order-filter-status"><option value="">All statuses</option><option>In Queue</option><option>In Progress</option><option>Shipped</option><option>Completed</option><option>Cancelled</option></select></label>
-            <label>Customer email <input id="order-filter-email" type="search" autocomplete="off"></label>
+          <div class="admin-form-grid">
+            <label class="admin-field">Account scope <select class="admin-input" id="order-scope"><option value="own">My signed-in account's orders (default)</option><option value="all">ALL accounts — admin access required</option></select></label>
+            <label class="admin-field">Order ID <input class="admin-input" id="order-filter-id" type="search" autocomplete="off"></label>
+            <label class="admin-field">Status <select class="admin-input" id="order-filter-status"><option value="">All statuses</option><option>In Queue</option><option>In Progress</option><option>Shipped</option><option>Completed</option><option>Cancelled</option></select></label>
+            <label class="admin-field">Customer email <input class="admin-input" id="order-filter-email" type="search" autocomplete="off"></label>
           </div>
           <div class="admin-toolbar">
             <button type="button" class="admin-btn admin-btn-outline" id="orders-refresh">Refresh account orders</button>
@@ -290,13 +290,13 @@
     </form>
   </dialog>
 
-  <dialog id="order-details-dialog" class="admin-dialog" aria-labelledby="order-details-title" aria-describedby="order-details-effects">
+  <dialog id="order-details-dialog" class="admin-dialog admin-order-details" aria-labelledby="order-details-title" aria-describedby="order-details-effects">
     <h2 id="order-details-title">Order details</h2>
     <p id="order-detail-path" class="admin-order-path"></p>
     <div id="order-details-body"></div>
     <p id="order-details-effects" class="admin-note admin-warning">Order records only: no refunds, payments, shipping notifications or stock adjustments. Buyer-provided prices and totals must be verified.</p>
-    <label>Lifecycle status <select id="order-next-status"><option>In Queue</option><option>In Progress</option><option>Shipped</option><option>Completed</option><option>Cancelled</option></select></label>
-    <label id="order-reason-label" hidden>Cancellation reason (optional, 500 characters maximum)<textarea id="order-cancel-reason" maxlength="500"></textarea></label>
+    <label class="admin-field">Lifecycle status <select class="admin-input" id="order-next-status"><option>In Queue</option><option>In Progress</option><option>Shipped</option><option>Completed</option><option>Cancelled</option></select></label>
+    <label id="order-reason-label" class="admin-field" hidden>Cancellation reason (optional, 500 characters maximum)<textarea class="admin-input" id="order-cancel-reason" maxlength="500" rows="4"></textarea></label>
     <p id="order-details-status" class="admin-status" role="status"></p>
     <div class="admin-toolbar">
       <button type="button" id="order-save-status" class="admin-btn">Save lifecycle status</button>
@@ -310,9 +310,9 @@
     <div id="order-delete-controls" hidden>
       <p class="admin-note admin-warning">Optional backup: download the captured documents as private JSON, or explicitly skip the backup below. The export contains customer data and goes only to your browser download, not to a server. Download delivery is not verified.</p>
       <button type="button" id="order-danger-export" class="admin-btn admin-btn-outline">Download captured private JSON</button>
-      <label><input id="order-private-export" type="checkbox"> I have saved the private JSON securely and understand this permanently deletes customer order data.</label>
-      <label><input id="order-skip-backup" type="checkbox"> Skip the optional backup. I understand permanently deleted customer order data cannot be recovered from this website.</label>
-      <label id="order-delete-phrase-label" hidden>Final confirmation: type DELETE ORDERS exactly <input id="order-delete-phrase" autocomplete="off"></label>
+      <label class="admin-check"><input id="order-private-export" type="checkbox"> I have saved the private JSON securely and understand this permanently deletes customer order data.</label>
+      <label class="admin-check"><input id="order-skip-backup" type="checkbox"> Skip the optional backup. I understand permanently deleted customer order data cannot be recovered from this website.</label>
+      <label id="order-delete-phrase-label" class="admin-field" hidden>Final confirmation: type DELETE ORDERS exactly <input class="admin-input" id="order-delete-phrase" autocomplete="off"></label>
     </div>
     <p id="order-danger-status" class="admin-status" role="status"></p>
     <div class="admin-toolbar">
