@@ -175,8 +175,8 @@
           <p id="order-selection-count" class="admin-note"></p>
           <p id="account-orders-status" class="admin-status" role="status"></p>
           <div class="admin-table-wrap">
-            <table class="admin-table">
-              <thead><tr><th><input id="order-select-all" type="checkbox" aria-label="Select all currently filtered document paths" disabled></th><th>Order / exact document path</th><th>Customer</th><th>Date</th><th>Status</th><th>Items</th><th>Total</th><th>Ship to</th><th>Actions</th></tr></thead>
+            <table class="admin-table admin-orders-table">
+              <thead><tr><th scope="col" class="admin-order-select"><label class="admin-select-all"><input id="order-select-all" type="checkbox" aria-label="Select all currently filtered document paths" disabled><span class="admin-select-all-text">Select all filtered</span></label></th><th scope="col">Order</th><th scope="col">Placed</th><th scope="col">Customer / ship to</th><th scope="col">Status</th><th scope="col" class="admin-order-total-cell">Total</th><th scope="col">Actions</th></tr></thead>
               <tbody id="account-order-rows"></tbody>
             </table>
           </div>
@@ -291,7 +291,10 @@
   </dialog>
 
   <dialog id="order-details-dialog" class="admin-dialog admin-order-details" aria-labelledby="order-details-title" aria-describedby="order-details-effects">
-    <h2 id="order-details-title">Order details</h2>
+    <div class="admin-dialog-header">
+      <h2 id="order-details-title">Order details</h2>
+      <button type="button" id="order-details-close" class="admin-btn admin-btn-outline">Close details</button>
+    </div>
     <p id="order-detail-path" class="admin-order-path"></p>
     <div id="order-details-body"></div>
     <p id="order-details-effects" class="admin-note admin-warning">Order records only: no refunds, payments, shipping notifications or stock adjustments. Buyer-provided prices and totals must be verified.</p>
@@ -300,7 +303,6 @@
     <p id="order-details-status" class="admin-status" role="status"></p>
     <div class="admin-toolbar">
       <button type="button" id="order-save-status" class="admin-btn">Save lifecycle status</button>
-      <button type="button" id="order-details-close" class="admin-btn admin-btn-outline">Close details</button>
     </div>
   </dialog>
   <dialog id="order-danger-dialog" class="admin-dialog" aria-labelledby="order-danger-title" aria-describedby="order-danger-description">
@@ -370,7 +372,7 @@
       deleteOrders: async (paths, { expectedUid }) =>
         (await orderServiceFor(expectedUid)).deleteOrders(paths, () => {}, expectedUid)
     },
-      download: (contents, type, filename) => downloadFile(contents, filename, type), formatTime });
+      download: (contents, type, filename) => downloadFile(contents, filename, type), formatTime: formatOrderTime });
     function clearPendingOrderActions() {
       const pending = adminOrderServicePromise;
       const service = adminOrderService;
@@ -505,6 +507,11 @@
     function formatTime(value) {
       const time = activityTime(value);
       return time === null ? '—' : new Date(time).toLocaleString();
+    }
+
+    function formatOrderTime(value) {
+      const time = activityTime(value);
+      return time === null ? '—' : new Date(time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
     }
 
     function isPermissionError(error) {

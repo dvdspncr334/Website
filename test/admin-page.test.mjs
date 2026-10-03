@@ -85,7 +85,13 @@ test('order controls reuse labelled dark site inputs and details styling is admi
   assert.match(css, /\.admin-page \.admin-order-info \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.admin-page \.admin-order-info \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /\.admin-page \.admin-money,[^{]+\{[^}]*white-space: nowrap;[^}]*overflow-wrap: normal;/);
-  assert.match(css, /\.admin-page \.admin-order-item img \{[^}]*width: 64px;[^}]*height: 64px;[^}]*object-fit: contain;/);
+  assert.match(css, /\.admin-page \.admin-order-thumb \{[^}]*width: 88px;[^}]*height: 88px;[^}]*overflow: hidden;/);
+  assert.match(css, /\.admin-page \.admin-order-thumb img \{[^}]*max-width: 88px;[^}]*max-height: 88px;[^}]*aspect-ratio: 1 \/ 1;[^}]*object-fit: contain;/);
+  assert.match(css, /\.admin-page \.admin-order-items \{[^}]*table-layout: fixed;/);
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*\.admin-page \.admin-orders-table td::before \{[^}]*content: attr\(data-label\);/);
+  assert.match(css, /\.admin-page \.admin-orders-table th,\s*\.admin-page \.admin-orders-table td \{[^}]*overflow-wrap: normal;/);
+  assert.match(admin, /<div class="admin-dialog-header">\s*<h2 id="order-details-title">Order details<\/h2>\s*<button type="button" id="order-details-close"/);
+  assert.doesNotMatch(css, /\.admin-dialog \.admin-order-items[^{]*\{[^}]*max-height/);
   assert.match(css, /\.admin-page :focus-visible/);
 });
 
@@ -807,12 +813,14 @@ test('orders tab lists all-account full paths newest first and opens private acc
   assert.equal(rows.length, 2);
   const text = row => row.children.map(td => td.textContent);
   assert.match(text(rows[0])[1], /JGV-00000002.*users\/bob\/orders\/JGV-00000002/);
-  assert.equal(text(rows[0])[2], 'UID bob', 'missing email never guesses an unrelated customer email');
+  assert.equal(rows[0].children[1].children[0].textContent, 'JGV-00000002', 'order ID is shown on its own before the path control');
+  assert.equal(rows[0].children[3].children[0].textContent, 'UID bob', 'missing email never guesses an unrelated customer email');
   assert.equal(text(rows[0])[4], 'Shipped');
-  assert.match(text(rows[0])[7], /Ada L — 1 Main — Austin, TX, 78701, US/);
-  assert.equal(text(rows[1])[2], 'alice@example.com');
-  assert.equal(text(rows[1])[6], '$20.00');
-  await rows[0].children[8].children[0].emit('click');
+  assert.equal(rows[0].children[3].children[1].textContent, 'Ship to: Ada L · Austin, TX · US');
+  assert.equal(rows[1].children[3].children[0].textContent, 'alice@example.com');
+  assert.equal(text(rows[1])[5], '$20.002 items');
+  assert.deepEqual(rows[0].children.map(td => td.attributes['data-label']), ['Select', 'Order', 'Placed', 'Customer', 'Status', 'Total', 'Actions']);
+  await rows[0].children[6].children[0].emit('click');
   assert.equal(f.get('order-details-dialog').open, true);
   assert.match(f.get('order-details-body').textContent, /<b>side door<\/b>/);
   assert.match(f.get('order-details-body').textContent, /Order notes: gift/);

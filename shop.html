@@ -786,8 +786,10 @@
 
       // Use the image currently displayed on the card (reflects the
       // selected color variant), falling back to the item's default image.
+      // Read the attribute, not .src: .src is the absolute URL resolved for
+      // this host, while orders must keep the exact site-relative path.
       const productImg = card.querySelector('.product-img');
-      const img = (productImg && productImg.src) ? productImg.src : (item.img || 'images/placeholder.png');
+      const img = (productImg && productImg.getAttribute('src')) || item.img || 'images/placeholder.png';
 
       if (!id || !qty || qty < 1) return;
 
