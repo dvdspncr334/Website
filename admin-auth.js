@@ -104,3 +104,40 @@ export async function isAdmin({ force = false } = {}) {
 export function clearAdminCache(uid) {
   adminStatus().clear(uid);
 }
+
+// The rules also enforce admin access on every delete, including each batch.
+export function createActivityMaintenance({ checkAdmin, firebase }) {
+  async function authorizedFirebase() {
+    if (!(await checkAdmin({ force: true }))) {
+      throw Object.assign(new Error('Admin access required.'), { code: 'permission-denied' });
+    }
+    return firebase();
+  }
+
+  async function deleteUserActivity(uid) {
+    if (typeof uid !== 'string' || !uid || uid.includes('/')) throw new Error('Invalid user UID.');
+    const { fs, db } = await authorizedFirebase();
+    await fs.deleteDoc(fs.doc(db, 'userActivity', uid));
+  }
+
+  async function clearUserActivity({ onProgress = () => {} } = {}) {
+    const { fs, db } = await authorizedFirebase();
+    const snapshot = await fs.getDocs(fs.collection(db, 'userActivity'));
+    let deleted = 0;
+    for (let i = 0; i < snapshot.docs.length; i += 450) {
+      const batch = fs.writeBatch(db);
+      const docs = snapshot.docs.slice(i, i + 450);
+      docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      deleted += docs.length;
+      onProgress(deleted);
+    }
+    return deleted;
+  }
+
+  return { deleteUserActivity, clearUserActivity };
+}
+
+const activityMaintenance = createActivityMaintenance({ checkAdmin: isAdmin, firebase: loadFirebase });
+export const deleteUserActivity = activityMaintenance.deleteUserActivity;
+export const clearUserActivity = activityMaintenance.clearUserActivity;

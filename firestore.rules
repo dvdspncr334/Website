@@ -4,7 +4,7 @@ rules_version = '2';
 //
 // Only the signed-in owner can read or write their own cart at
 // users/{uid}/carts/current. Admins (users with an admins/{uid} document)
-// can manage the admins list and read userActivity. Everything else is
+// can manage the admins list and read/delete userActivity. Everything else is
 // denied by default.
 //
 // If your project already has rules for other data, MERGE the
@@ -89,6 +89,7 @@ service cloud.firestore {
     // themselves only and readable only by admins.
     match /userActivity/{uid} {
       allow read: if isAdmin();
+      allow delete: if isAdmin();
       allow create, update: if request.auth != null && request.auth.uid == uid
         && request.resource.data.keys().hasAll(['email', 'lastSignInAt', 'lastActiveAt'])
         && request.resource.data.keys().hasOnly(['email', 'lastSignInAt', 'lastActiveAt'])

@@ -227,3 +227,23 @@ test('users may only write their own activity record with their own email', { sk
   const noEmail = env.authenticatedContext('eve').firestore();
   await assertFails(fs.setDoc(fs.doc(noEmail, 'userActivity/eve'), activityDoc('')));
 });
+
+test('only current admins can delete activity; deletes never touch auth or admin records', { skip }, async () => {
+  const { assertFails, assertSucceeds } = rut;
+  await seedAdmin('root');
+  await seedActivity('bob');
+  await seedActivity('alice');
+  for (const user of [db(null), asUser('bob'), asUser('alice')]) {
+    await assertFails(fs.deleteDoc(fs.doc(user, 'userActivity/bob')));
+  }
+  const root = asUser('root');
+  const batch = fs.writeBatch(root);
+  batch.delete(fs.doc(root, 'userActivity/bob'));
+  batch.delete(fs.doc(root, 'userActivity/alice'));
+  await assertSucceeds(batch.commit());
+  assert.equal((await fs.getDocs(fs.collection(root, 'userActivity'))).size, 0);
+  assert.equal((await fs.getDoc(fs.doc(root, 'admins/root'))).exists(), true);
+  await seedActivity('bob');
+  await assertSucceeds(fs.deleteDoc(fs.doc(root, 'admins/root')));
+  await assertFails(fs.deleteDoc(fs.doc(root, 'userActivity/bob')), 'revoked admin cannot delete');
+});

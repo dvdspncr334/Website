@@ -117,7 +117,7 @@ This pull request **does not** create your database or publish rules. Until you 
 | `admins/{uid}` → `{ email, addedBy, addedAt }` | Admins (or you, in the Firebase Console) | The user themselves (to check their own status) and admins |
 | `userActivity/{uid}` → `{ email, lastSignInAt, lastActiveAt }` | Each signed-in user, for themselves only (from `mini-cart.js` → `user-activity.js`, at most once every 15 minutes per browser session) | Admins only |
 
-`userActivity` stores only the email address, last sign-in time and last activity time. It isn't a full account list: only users who have signed in since this was deployed appear. Delete any entry in the Firebase Console if you need to.
+`userActivity` stores only the email address, last sign-in time and last activity time. It isn't a full account list: only users who have signed in since this was deployed appear. Admins can delete activity records in the dashboard without deleting Firebase Auth accounts. Publish the latest `firestore.rules` to enable these admin-only deletes.
 
 ### Setup steps (one time)
 
@@ -133,8 +133,14 @@ This pull request **does not** create your database or publish rules. Until you 
 2. Sign in with a non-admin account and open `/admin.html` → redirected to `login.html` with "This account doesn't have admin access."
 3. Add yourself in the console (step 3), open `/admin.html` → dashboard loads; there is no cart badge; **Log out** and **Back to site** work.
 4. Shop Management: edit a product, add a product, delete a product, then **Download CSV** and check the file. Invalid values (duplicate id, non-numeric price, empty `|` entries in colors, `javascript:` image paths, `<`/`>` characters) are rejected with a message.
-5. User Activity lists recently signed-in emails with sign-in and last-active times.
-6. Settings: add a second admin by email, then remove them. Then remove yourself → you are sent to `login.html` and `/admin.html` is denied again.
+5. Dashboard shows product count and users whose last sign-in falls within 24 hours / 7 days. These count users, not individual sign-in events (only the latest sign-in is stored).
+6. Shop Management: select/deselect rows and select all visible products, preview a bulk status/discount/price update, cancel, then confirm. Only selected products change; download/commit the CSV to publish them.
+7. User Activity: search email, filter an inclusive date range by last sign-in, sort columns, and export the displayed rows as CSV. Delete an activity record only after both confirmations and typing `confirm-clear`; the Firebase Auth account is not deleted.
+8. Settings: download a JSON backup and check the filename, timestamp, products, users, admins and byte count. Products come from the in-memory CSV (including unsaved edits), not Firestore. No auth passwords or tokens are included.
+9. Settings Maintenance: clear activity only after both confirmations and typing `confirm-clear`. Publish the updated `firestore.rules` first: only current admins can delete activity. Deletes run in batches; a failed later batch does not undo earlier batches. Visitors still signed in may create new activity records afterward.
+10. Reset demo orders removes only `jgv3d_orders` in the viewing browser; carts, auth accounts and Firestore are untouched.
+11. Settings Audit log: check product edits, bulk updates, admin changes, clears and backups; export CSV/JSON, clear the log, and refresh to verify it resets. Audit entries are stored only in browser sessionStorage for this page session, never Firestore.
+12. Settings: add a second admin by email, then remove them. Then remove yourself → you are sent to `login.html` and `/admin.html` is denied again.
 
 ### Shop CSV editor: what it can and can't do
 
@@ -148,7 +154,7 @@ This pull request **does not** create your database or publish rules. Until you 
 
 ### Orders are not managed in the admin panel
 
-Orders are still **browser-local demo data** (see above). There is no server copy, so the admin panel **can't** see or manage customers' orders. The *Orders Overview* tab only shows, read-only, any demo orders stored in the admin's own browser, with a notice explaining this.
+Orders are still **browser-local demo data** (see above). There is no server copy, so the admin panel **can't** see or manage customers' orders. The *Orders* tab shows any demo orders stored in the admin's own browser, read-only; Settings can reset only that browser's demo orders.
 
 ### Not implemented (out of scope)
 

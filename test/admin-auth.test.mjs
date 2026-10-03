@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createAdminStatus, ADMIN_CACHE_PREFIX, ADMIN_CACHE_TTL_MS } from '../admin-auth.js';
+import { createAdminStatus, createActivityMaintenance, ADMIN_CACHE_PREFIX, ADMIN_CACHE_TTL_MS } from '../admin-auth.js';
 import { shouldRecord, ACTIVITY_INTERVAL_MS } from '../user-activity.js';
 
 function memoryStorage() {
@@ -70,4 +70,58 @@ test('activity is recorded on first visit, new sign-in, or after the interval', 
   assert.equal(shouldRecord({ at: 10, signIn: 1 }, { signIn: 1, now: 20 }), false);
   assert.equal(shouldRecord({ at: 10, signIn: 1 }, { signIn: 2, now: 20 }), true);
   assert.equal(shouldRecord({ at: 10, signIn: 1 }, { signIn: 1, now: 10 + ACTIVITY_INTERVAL_MS }), true);
+});
+
+function maintenanceFixture({ allowed = true, size = 901, failBatch = 0 } = {}) {
+  const calls = [];
+  let commits = 0;
+  const fs = {
+    collection: (_, name) => name,
+    doc: (_, name, uid) => `${name}/${uid}`,
+    deleteDoc: async ref => { calls.push(['delete', ref]); },
+    getDocs: async name => {
+      calls.push(['read', name]);
+      return { docs: Array.from({ length: size }, (_, i) => ({ ref: `userActivity/${i}` })) };
+    },
+    writeBatch: () => {
+      const refs = [];
+      return {
+        delete: ref => refs.push(ref),
+        commit: async () => {
+          commits += 1;
+          if (commits === failBatch) throw new Error('offline');
+          calls.push(['batch', refs]);
+        }
+      };
+    }
+  };
+  const tools = createActivityMaintenance({
+    checkAdmin: async options => { calls.push(['admin', options]); return allowed; },
+    firebase: async () => ({ fs, db: {} })
+  });
+  return { tools, calls };
+}
+
+test('activity deletion freshly checks admin status and only deletes the activity record', async () => {
+  const { tools, calls } = maintenanceFixture();
+  await tools.deleteUserActivity('someone');
+  assert.deepEqual(calls, [['admin', { force: true }], ['delete', 'userActivity/someone']]);
+  await assert.rejects(tools.deleteUserActivity('bad/path'), /Invalid/);
+  const denied = maintenanceFixture({ allowed: false });
+  await assert.rejects(denied.tools.deleteUserActivity('someone'), { code: 'permission-denied' });
+  await assert.rejects(denied.tools.clearUserActivity(), { code: 'permission-denied' });
+  assert.equal(denied.calls.some(call => ['read', 'delete', 'batch'].includes(call[0])), false);
+});
+
+test('clear activity handles collections beyond one batch and reports only committed deletions', async () => {
+  const { tools, calls } = maintenanceFixture();
+  const progress = [];
+  assert.equal(await tools.clearUserActivity({ onProgress: count => progress.push(count) }), 901);
+  assert.deepEqual(progress, [450, 900, 901]);
+  assert.deepEqual(calls.filter(call => call[0] === 'batch').map(call => call[1].length), [450, 450, 1]);
+  const failing = maintenanceFixture({ failBatch: 2 });
+  const partial = [];
+  await assert.rejects(failing.tools.clearUserActivity({ onProgress: count => partial.push(count) }), /offline/);
+  assert.deepEqual(partial, [450]);
+  assert.equal(await maintenanceFixture({ size: 0 }).tools.clearUserActivity(), 0);
 });

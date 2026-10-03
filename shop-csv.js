@@ -188,3 +188,16 @@ export function validateAll(rows) {
   });
   return problems;
 }
+
+// Validate every selected candidate before returning any changes.
+export function applyBulkUpdate(rows, selectedIds, field, value) {
+  if (!['status', 'discount', 'price'].includes(field)) throw new Error('Unsupported bulk field.');
+  const selected = new Set(selectedIds);
+  const next = rows.map(row => selected.has(row.id) ? { ...row, [field]: String(value).trim() } : row);
+  next.forEach((row, index) => {
+    if (!selected.has(row.id)) return;
+    const errors = validateProduct(row, next.filter((_, i) => i !== index));
+    if (Object.keys(errors).length) throw new Error(`${row.id}: ${Object.values(errors).join(' ')}`);
+  });
+  return next;
+}
