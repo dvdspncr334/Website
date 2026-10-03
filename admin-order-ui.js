@@ -168,6 +168,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     copy.className = 'admin-btn admin-btn-small admin-btn-outline admin-copy-path';
     copy.textContent = 'Copy path';
     copy.addEventListener('click', async () => {
+      copy.textContent = 'Copy path';
       try {
         await copyText(path);
         copy.textContent = 'Copied';

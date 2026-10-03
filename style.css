@@ -2249,6 +2249,7 @@ footer a:hover {
   height: 1px;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 
@@ -2890,6 +2891,7 @@ footer a:hover {
     width: auto;
     height: auto;
     clip: auto;
+    clip-path: none;
   }
 
   .admin-page .admin-orders-table tbody tr {
