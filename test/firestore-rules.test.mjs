@@ -126,3 +126,104 @@ test('the real client backend writes pass the rules (add, change, remove)', { sk
   const bobAsAlice = createFirestoreCartBackend({ db: db('bob'), auth: { currentUser: { uid: 'bob' } }, onUserChanged: () => () => {}, fs });
   await assertFails(bobAsAlice.mutateCart('alice', plan(addOperation(item('x'))), () => true));
 });
+
+/* ---------------- Admins and user activity ---------------- */
+
+const asUser = (uid, email = `${uid}@example.com`) => env.authenticatedContext(uid, { email }).firestore();
+
+async function seedDoc(docPath, data) {
+  await env.withSecurityRulesDisabled(ctx => fs.setDoc(fs.doc(ctx.firestore(), docPath), data));
+}
+
+// Bootstrap: the first admin is written in the Firebase Console, which
+// bypasses rules (simulated here with rules disabled).
+async function seedAdmin(uid) {
+  await seedDoc(`admins/${uid}`, { note: 'added in console' });
+}
+
+async function seedActivity(uid, email = `${uid}@example.com`) {
+  await seedDoc(`userActivity/${uid}`, { email, lastSignInAt: new Date(), lastActiveAt: new Date() });
+}
+
+const adminDoc = (by, email) => ({ email, addedBy: by, addedAt: fs.serverTimestamp() });
+const activityDoc = (email, extra = {}) => ({
+  email, lastSignInAt: fs.Timestamp.fromMillis(Date.now() - 60000), lastActiveAt: fs.serverTimestamp(), ...extra
+});
+
+test('unauthenticated users cannot read or write admins or userActivity', { skip }, async () => {
+  const { assertFails } = rut;
+  await seedAdmin('root');
+  await seedActivity('bob');
+  const anon = db(null);
+  await assertFails(fs.getDoc(fs.doc(anon, 'admins/root')));
+  await assertFails(fs.getDocs(fs.collection(anon, 'admins')));
+  await assertFails(fs.setDoc(fs.doc(anon, 'admins/bob'), adminDoc('bob', 'bob@example.com')));
+  await assertFails(fs.deleteDoc(fs.doc(anon, 'admins/root')));
+  await assertFails(fs.getDocs(fs.collection(anon, 'userActivity')));
+  await assertFails(fs.setDoc(fs.doc(anon, 'userActivity/bob'), activityDoc('bob@example.com')));
+});
+
+test('non-admins can only check their own admin status', { skip }, async () => {
+  const { assertFails, assertSucceeds } = rut;
+  await seedAdmin('root');
+  await seedActivity('bob');
+  const bob = asUser('bob');
+  await assertSucceeds(fs.getDoc(fs.doc(bob, 'admins/bob')), 'reading own (missing) admin doc is allowed');
+  await assertFails(fs.getDoc(fs.doc(bob, 'admins/root')));
+  await assertFails(fs.getDocs(fs.collection(bob, 'admins')));
+  await assertFails(fs.setDoc(fs.doc(bob, 'admins/bob'), adminDoc('bob', 'bob@example.com')), 'no self-promotion');
+  await assertFails(fs.deleteDoc(fs.doc(bob, 'admins/root')));
+  await assertFails(fs.getDoc(fs.doc(bob, 'userActivity/bob')));
+  await assertFails(fs.getDocs(fs.collection(bob, 'userActivity')));
+});
+
+test('first admin bootstrap: no client can create an admin until one is added in the console', { skip }, async () => {
+  const { assertFails, assertSucceeds } = rut;
+  await seedActivity('alice');
+  await seedActivity('bob');
+  await assertFails(fs.setDoc(fs.doc(asUser('alice'), 'admins/alice'), adminDoc('alice', 'alice@example.com')));
+  await seedAdmin('alice');
+  await assertSucceeds(fs.getDoc(fs.doc(asUser('alice'), 'admins/alice')));
+  await assertSucceeds(fs.setDoc(fs.doc(asUser('alice'), 'admins/bob'), adminDoc('alice', 'bob@example.com')));
+  await assertSucceeds(fs.getDocs(fs.collection(asUser('bob'), 'admins')), 'the new admin is an admin');
+});
+
+test('admins can list admins, read activity, and add/remove admins with valid data', { skip }, async () => {
+  const { assertFails, assertSucceeds } = rut;
+  await seedAdmin('root');
+  await seedActivity('bob');
+  await seedActivity('dave');
+  const root = asUser('root');
+  await assertSucceeds(fs.getDocs(fs.collection(root, 'admins')));
+  await assertSucceeds(fs.getDoc(fs.doc(root, 'admins/bob')));
+  await assertSucceeds(fs.getDocs(fs.query(fs.collection(root, 'userActivity'), fs.where('email', 'in', ['bob@example.com']))));
+  await assertSucceeds(fs.getDocs(fs.query(fs.collection(root, 'userActivity'), fs.orderBy('lastActiveAt', 'desc'), fs.limit(50))));
+
+  await assertFails(fs.setDoc(fs.doc(root, 'admins/carol'), adminDoc('root', 'carol@example.com')), 'unknown user (no activity record)');
+  await assertFails(fs.setDoc(fs.doc(root, 'admins/bob'), adminDoc('root', 'someone@example.com')), 'email must match the user');
+  await assertFails(fs.setDoc(fs.doc(root, 'admins/bob'), adminDoc('dave', 'bob@example.com')), 'addedBy must be the requester');
+  await assertFails(fs.setDoc(fs.doc(root, 'admins/bob'), { ...adminDoc('root', 'bob@example.com'), role: 'owner' }));
+  await assertFails(fs.setDoc(fs.doc(root, 'admins/bob'), { ...adminDoc('root', 'bob@example.com'), addedAt: new Date(0) }));
+  await assertSucceeds(fs.setDoc(fs.doc(root, 'admins/bob'), adminDoc('root', 'bob@example.com')));
+  await assertFails(fs.setDoc(fs.doc(root, 'admins/bob'), adminDoc('root', 'bob@example.com')), 'admin docs are not updated in place');
+
+  await assertSucceeds(fs.deleteDoc(fs.doc(root, 'admins/bob')));
+  await assertSucceeds(fs.deleteDoc(fs.doc(root, 'admins/root')), 'an admin may remove themselves');
+  await assertFails(fs.getDocs(fs.collection(root, 'admins')), 'removed admin loses access');
+});
+
+test('users may only write their own activity record with their own email', { skip }, async () => {
+  const { assertFails, assertSucceeds } = rut;
+  const bob = asUser('bob');
+  const ref = fs.doc(bob, 'userActivity/bob');
+  await assertSucceeds(fs.setDoc(ref, activityDoc('bob@example.com')));
+  await assertSucceeds(fs.setDoc(ref, activityDoc('bob@example.com', { lastSignInAt: fs.serverTimestamp() })));
+  await assertFails(fs.setDoc(ref, activityDoc('root@example.com')), 'email must match the auth token');
+  await assertFails(fs.setDoc(ref, activityDoc('bob@example.com', { lastActiveAt: new Date(0) })));
+  await assertFails(fs.setDoc(ref, activityDoc('bob@example.com', { lastSignInAt: fs.Timestamp.fromMillis(Date.now() + 86400000) })));
+  await assertFails(fs.setDoc(ref, activityDoc('bob@example.com', { isAdmin: true })));
+  await assertFails(fs.setDoc(fs.doc(bob, 'userActivity/alice'), activityDoc('bob@example.com')));
+  await assertFails(fs.deleteDoc(ref));
+  const noEmail = env.authenticatedContext('eve').firestore();
+  await assertFails(fs.setDoc(fs.doc(noEmail, 'userActivity/eve'), activityDoc('')));
+});

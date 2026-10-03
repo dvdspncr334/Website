@@ -21,3 +21,6 @@ cart.subscribe(state => {
     link.title = label;
   }
 });
+
+// Best-effort sign-in/activity record for the admin dashboard (user-activity.js).
+import('./user-activity.js').then(m => m.startActivityTracking()).catch(() => {});
