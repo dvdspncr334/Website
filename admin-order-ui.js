@@ -62,7 +62,7 @@ export function shipToSummary(raw) {
 // Account scopes classify the single all-accounts snapshot by the explicit
 // guest marker; legacy orders without `guest: true` are signed-in orders.
 export const ORDER_ACCOUNT_SCOPES = ['all', 'guest', 'signed-in'];
-export const ORDER_ACCOUNT_SCOPE_LABELS = { all: 'All accounts (guest and signed-in)', guest: 'Guest accounts only', 'signed-in': 'Signed-in accounts only' };
+export const ORDER_ACCOUNT_SCOPE_LABELS = { all: 'All accounts', guest: 'Guest accounts', 'signed-in': 'Signed-in accounts' };
 
 export function orderAccountType(order) {
   return order?.guest === true ? 'guest' : 'signed-in';
@@ -272,7 +272,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     $('order-scope').value = 'all';
     clearDialogs();
     render();
-    message(uid ? 'Default scope: All accounts (guest and signed-in). Refresh to load account orders.' : 'Sign in with current admin access to load account orders.');
+    message(uid ? 'Default scope: All accounts. Refresh to load account orders.' : 'Sign in with current admin access to load account orders.');
   }
   async function refresh() {
     if (!uid || busy) return;
@@ -470,7 +470,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     const deletion = danger.kind === 'delete';
     $('order-danger-title').textContent = deletion ? 'Danger: permanently delete account orders' : 'Confirm order cancellation';
     $('order-danger-description').textContent = deletion
-      ? `${danger.scope}. Account scope: ${danger.accountScope}. EXACT captured documents: ${danger.remaining.length}. This permanently removes customer data and cannot be undone. New arrivals are NOT included. ${ORDER_EFFECTS_WARNING}`
+      ? `${danger.scope}. Account scope: ${danger.accountScope}. EXACT captured documents: ${danger.remaining.length}. This permanently removes customer data and cannot be undone. New arrivals ar[...]
       : `Cancel exactly ${danger.path}. Optional reason: ${danger.reason || '(none)'}. ${ORDER_EFFECTS_WARNING}`;
     $('order-danger-paths').textContent = deletion ? danger.remaining.map(order => order.path).join('\n') : danger.path;
     $('order-delete-controls').hidden = !deletion;
@@ -544,9 +544,9 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
       }
       refreshRequired = !refreshed || orderMissing;
       loaded = refreshed;
-      $('order-details-status').textContent = `Saved ${status}. ${orderMissing ? 'Order not found after refetch; further updates are disabled.' : refreshed ? 'Refetched the current order snapshot.' : 'Refresh failed; close details and use Refresh before another update.'} ${ORDER_EFFECTS_WARNING}`;
+      $('order-details-status').textContent = `Saved ${status}. ${orderMissing ? 'Order not found after refetch; further updates are disabled.' : refreshed ? 'Refetched the current order snapshot[...]
       $('order-save-status').disabled = refreshRequired;
-      message(`Updated one order to ${status}.${orderMissing ? ' Order not found in the refreshed snapshot.' : refreshed ? ' Current snapshot refreshed.' : ' Refresh failed; current list may be stale.'}`, !refreshed || orderMissing);
+      message(`Updated one order to ${status}.${orderMissing ? ' Order not found in the refreshed snapshot.' : refreshed ? ' Current snapshot refreshed.' : ' Refresh failed; current list may be s[...]
     } catch (error) {
       if (!current(token)) return;
       if (error.code === 'stale-order' || error.code === 'order-not-found') refreshRequired = true;
@@ -615,7 +615,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
       }
     } catch {
       if (!current(token) || danger !== operation) return;
-      const summary = `${operation.deleted} of ${operation.captured.length} confirmed deleted; ${operation.remaining.length} unconfirmed. Refresh before creating a new deletion if a network result was lost. Retry only these captured paths.`;
+      const summary = `${operation.deleted} of ${operation.captured.length} confirmed deleted; ${operation.remaining.length} unconfirmed. Refresh before creating a new deletion if a network resul[...]
       message(summary, true);
       $('order-danger-status').textContent = summary;
       operation.stage = 1;
