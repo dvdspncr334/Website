@@ -1,8 +1,63 @@
-import { normalizeOrder, sortOrdersNewestFirst, summarizeShipping, formatShippingLines } from './account-data.js';
+import { normalizeOrder, normalizeShipping, sortOrdersNewestFirst, formatShippingLines } from './account-data.js';
 
 export const ORDER_EFFECTS_WARNING = 'This changes order records only. No refunds, payments, shipping notifications or stock adjustments are performed.';
 export const DELETE_PHRASE = 'DELETE ORDERS';
 export const ADMIN_ORDER_STATUSES = ['In Queue', 'In Progress', 'Shipped', 'Completed', 'Cancelled'];
+
+export const ORDER_IMAGE_PLACEHOLDER = 'images/placeholder.png';
+const SITE_IMAGE_RE = /^images\/[a-z0-9_./ -]+\.(?:png|jpe?g|webp|gif|avif)$/i;
+// Deployed copies of this site. Older orders saved the shop card's resolved
+// img.src (an absolute URL on one of these), not the CSV's relative path.
+const SITE_BASES = Object.freeze(['https://www.jgv3d.com/', 'https://jgv3d.com/', 'https://dvdspncr334.github.io/Website/']);
+const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export function formatOrderMoney(value) {
+  return USD.format(Number.isFinite(Number(value)) ? Number(value) : 0);
+}
+
+function siteImagePath(path) {
+  const relative = path.replace(/^\.\//, '');
+  return SITE_IMAGE_RE.test(relative) && !relative.split('/').includes('..') && !relative.includes('//') ? relative : '';
+}
+
+// Returns a site-relative images/... path (exact case preserved) for a saved
+// order item image, or '' when the value is missing, unsafe or third-party.
+// Absolute URLs are accepted only on this site's own deployments (or the
+// page's own origin/base, e.g. a local preview) and are mapped back to the
+// relative asset path so they resolve against the current page's base.
+export function orderItemImagePath(raw, pageUrl = '') {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (!value || value.length > 500) return '';
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^[/\\]/.test(value)) return siteImagePath(value);
+  let url;
+  try { url = new URL(value); } catch { return ''; }
+  if (url.username || url.password) return '';
+  const bases = [...SITE_BASES];
+  try {
+    const page = new URL('.', pageUrl);
+    if (page.protocol === 'https:' || page.protocol === 'http:') bases.push(page.href);
+  } catch { /* no page base available */ }
+  for (const base of bases) {
+    const site = new URL(base);
+    if (url.origin !== site.origin || !url.pathname.startsWith(site.pathname)) continue;
+    let path = '';
+    try { path = siteImagePath(decodeURIComponent(url.pathname.slice(site.pathname.length))); } catch { continue; }
+    if (path) return path;
+  }
+  return '';
+}
+
+export function splitItemTitle(title) {
+  const match = /^(.*?)\s*\(([^()]*)\)$/.exec(String(title || ''));
+  return match && match[1] ? { base: match[1], options: match[2] } : { base: String(title || 'Item'), options: '' };
+}
+
+export function shipToSummary(raw) {
+  const s = normalizeShipping(raw);
+  const name = [s.firstName, s.lastName].filter(Boolean).join(' ');
+  const place = [s.city, s.state].filter(Boolean).join(', ');
+  return [name, place, s.country].filter(Boolean).join(' · ');
+}
 
 export function filterAdminOrders(orders, { id = '', status = '', email = '' } = {}) {
   const contains = (value, query) => String(value || '').toLowerCase().includes(query.trim().toLowerCase());
@@ -28,7 +83,12 @@ export function privateOrderExport(capture) {
   return JSON.stringify({ scope: 'Captured Firestore account order documents only', orders: capture }, null, 2);
 }
 
-export function createAdminOrderUI({ document, service, download, formatTime = value => value || '—' }) {
+export function createAdminOrderUI({ document, service, download, formatTime = value => value || '—',
+  copyText = text => {
+    const clipboard = globalThis.navigator?.clipboard;
+    if (!clipboard?.writeText) throw new Error('Clipboard unavailable.');
+    return clipboard.writeText(text);
+  } }) {
   const $ = id => document.getElementById(id);
   let uid = null, epoch = 0, request = 0;
   let orders = [], selected = new Set(), loaded = false, busy = false, failed = false, refreshRequired = false;
@@ -36,12 +96,21 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
   const openers = new Map(), detailButtons = new Map();
   const audit = [];
   const current = token => token === epoch && Boolean(uid);
-  const cell = (text, className = '') => {
+  const cell = (text, className = '', label = '') => {
     const element = document.createElement('td');
     element.className = className;
     element.textContent = String(text ?? '—');
+    if (label) element.setAttribute('data-label', label);
     return element;
   };
+  const span = (text, className) => {
+    const element = document.createElement('span');
+    element.className = className;
+    element.textContent = String(text ?? '');
+    return element;
+  };
+  const itemCount = order => order.items.reduce((sum, item) => sum + item.qty, 0);
+  const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
   const button = (label, action, dangerButton = false) => {
     const element = document.createElement('button');
     element.type = 'button';
@@ -86,12 +155,38 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     $('order-cancel-reason').disabled = busy || !uid || !detailPath;
     $('order-details-close').disabled = busy;
   }
+  function pathControl(path) {
+    const details = document.createElement('details');
+    details.className = 'admin-order-path-details';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Document path';
+    const code = document.createElement('code');
+    code.className = 'admin-order-path';
+    code.textContent = path;
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'admin-btn admin-btn-small admin-btn-outline admin-copy-path';
+    copy.textContent = 'Copy path';
+    copy.addEventListener('click', async () => {
+      copy.textContent = 'Copy path';
+      try {
+        await copyText(path);
+        copy.textContent = 'Copied';
+        message(`Copied document path ${path}.`);
+      } catch {
+        copy.textContent = 'Copy failed: select the path text';
+        message('Couldn\'t copy the document path. Select the path text and copy it manually.', true);
+      }
+    });
+    details.append(summary, code, copy);
+    return details;
+  }
   function render() {
     $('account-order-rows').textContent = '';
     detailButtons.clear();
     for (const order of visible()) {
       const row = document.createElement('tr');
-      const checkCell = cell('');
+      const checkCell = cell('', 'admin-order-select', 'Select');
       const check = document.createElement('input');
       check.type = 'checkbox';
       check.checked = selected.has(order.path);
@@ -102,20 +197,21 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
         controls();
       });
       checkCell.append(check);
-      const identity = cell(order.id);
-      const path = document.createElement('small');
-      path.className = 'admin-order-path';
-      path.textContent = order.path;
-      identity.append(document.createElement('br'), path);
-      const actions = cell('', 'admin-actions');
+      const identity = cell('', 'admin-order-identity', 'Order');
+      identity.append(span(order.id, 'admin-order-id'), pathControl(order.path));
+      const customer = cell('', 'admin-order-customer', 'Customer');
+      const shipTo = shipToSummary(order.shipping);
+      customer.append(span(order.email || `UID ${order.uid}`, 'admin-order-email'),
+        span(shipTo ? `Ship to: ${shipTo}` : 'Ship to: (no address saved)', 'admin-order-ship'));
+      const status = cell('', 'admin-order-status-cell', 'Status');
+      status.append(statusBadge(order.status));
+      const total = cell('', 'admin-order-total-cell', 'Total');
+      total.append(span(formatOrderMoney(order.total), 'admin-money'), span(plural(itemCount(order), 'item'), 'admin-order-count'));
+      const actions = cell('', 'admin-actions', 'Actions');
       const detailsButton = button('Details / status', () => openDetails(order.path));
       detailButtons.set(order.path, detailsButton);
       actions.append(detailsButton, button('Delete', () => openDelete([order], 'Individual document'), true));
-      const status = cell('');
-      status.append(statusBadge(order.status));
-      row.append(checkCell, identity, cell(order.email || `UID ${order.uid}`), cell(formatTime(order.date)),
-        status, cell(order.items.reduce((sum, item) => sum + item.qty, 0)), cell(`$${order.total.toFixed(2)}`, 'admin-money'),
-        cell(summarizeShipping(order.shipping) || '—'), actions);
+      row.append(checkCell, identity, cell(formatTime(order.date), 'admin-order-date', 'Placed'), customer, status, total, actions);
       $('account-order-rows').append(row);
     }
     controls();
@@ -220,9 +316,21 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
       element.textContent = value;
       return element;
     };
-    const summary = document.createElement('div');
+    const summary = document.createElement('dl');
     summary.className = 'admin-order-summary';
-    summary.append(text(`Placed: ${formatTime(order.date)}`), statusBadge(order.status));
+    const fact = (label, ...values) => {
+      const group = document.createElement('div');
+      const term = document.createElement('dt');
+      term.textContent = label;
+      const detail = document.createElement('dd');
+      for (const value of values) detail.append(typeof value === 'string' ? span(value, 'admin-order-fact') : value);
+      group.append(term, detail);
+      summary.append(group);
+    };
+    fact('Placed', formatTime(order.date));
+    fact('Status', statusBadge(order.status));
+    fact('Items', plural(itemCount(order), 'item'));
+    fact('Total', span(formatOrderMoney(order.total), 'admin-money'));
     const grid = document.createElement('div');
     grid.className = 'admin-order-info';
     const customer = document.createElement('section');
@@ -238,7 +346,7 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     grid.append(customer, shipping);
     body.append(summary, grid, heading('Order items'));
     const table = document.createElement('table');
-    table.className = 'admin-table';
+    table.className = 'admin-table admin-order-items';
     const head = document.createElement('thead');
     const header = document.createElement('tr');
     for (const label of ['Item', 'Quantity', 'Unit price', 'Subtotal']) {
@@ -249,30 +357,71 @@ export function createAdminOrderUI({ document, service, download, formatTime = v
     }
     head.append(header);
     const rows = document.createElement('tbody');
+    if (!order.items.length) {
+      const row = document.createElement('tr');
+      const empty = cell('No items were saved with this order.', 'admin-order-empty');
+      empty.setAttribute('colspan', '4');
+      row.append(empty);
+      rows.append(row);
+    }
     for (const item of order.items) {
       const row = document.createElement('tr');
-      const identity = cell('', 'admin-order-item');
-      const image = document.createElement('img');
-      const localImage = /^(?:\.\/)?images\/[a-z0-9_./ -]+\.(?:png|jpe?g|webp|gif|avif)$/i.test(item.img) && !item.img.includes('..');
-      image.src = localImage ? item.img : 'images/placeholder.png';
-      image.alt = '';
-      image.loading = 'lazy';
-      image.addEventListener('error', () => { image.src = 'images/placeholder.png'; }, { once: true });
-      identity.append(image, text(`${item.title} (${item.id})`));
-      row.append(identity, cell(item.qty), cell(`$${item.price.toFixed(2)}`, 'admin-money'), cell(`$${(item.price * item.qty).toFixed(2)}`, 'admin-money'));
+      const identity = cell('', 'admin-order-item', 'Item');
+      const name = splitItemTitle(item.title);
+      const copy = document.createElement('div');
+      copy.className = 'admin-order-item-text';
+      copy.append(span(name.base, 'admin-order-item-title'));
+      if (name.options) copy.append(span(name.options, 'admin-order-item-options'));
+      if (item.id) copy.append(span(`ID: ${item.id}`, 'admin-order-item-id'));
+      const layout = document.createElement('div');
+      layout.className = 'admin-order-item-layout';
+      layout.append(thumbnail(item), copy);
+      identity.append(layout);
+      row.append(identity, cell(item.qty, 'admin-order-qty', 'Quantity'),
+        cell(formatOrderMoney(item.price), 'admin-money', 'Unit price'),
+        cell(formatOrderMoney(item.price * item.qty), 'admin-money', 'Subtotal'));
       rows.append(row);
     }
     table.append(head, rows);
-    const wrap = document.createElement('div');
-    wrap.className = 'admin-table-wrap';
-    wrap.append(table);
     const total = document.createElement('div');
     total.className = 'admin-order-total';
     const amount = document.createElement('strong');
     amount.className = 'admin-money';
-    amount.textContent = `$${order.total.toFixed(2)}`;
+    amount.textContent = formatOrderMoney(order.total);
     total.append(text('Order total: '), amount);
-    body.append(wrap, total);
+    body.append(table, total);
+  }
+  // Bounded thumbnail: one fallback to the placeholder with a visible label,
+  // and if the placeholder also fails the image is hidden (no retry loop).
+  function thumbnail(item) {
+    const frame = document.createElement('div');
+    frame.className = 'admin-order-thumb';
+    const image = document.createElement('img');
+    image.alt = '';
+    image.width = 88;
+    image.height = 88;
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    const label = span('Image unavailable', 'admin-order-thumb-label');
+    let fallback = false;
+    const unavailable = () => {
+      fallback = true;
+      frame.className = 'admin-order-thumb is-unavailable';
+      label.hidden = false;
+      image.src = ORDER_IMAGE_PLACEHOLDER;
+    };
+    image.addEventListener('error', () => {
+      if (!fallback) { unavailable(); return; }
+      image.hidden = true;
+      image.removeAttribute?.('src');
+    });
+    const path = orderItemImagePath(item.img, document.baseURI || globalThis.location?.href || '');
+    if (path && path !== ORDER_IMAGE_PLACEHOLDER) {
+      label.hidden = true;
+      image.src = path;
+    } else unavailable();
+    frame.append(image, label);
+    return frame;
   }
   function openDetails(path) {
     if (busy || !loaded) return;

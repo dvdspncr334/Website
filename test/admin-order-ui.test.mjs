@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createAdminOrderUI, captureOrders, filterAdminOrders, remainingOrderCapture, privateOrderExport } from '../admin-order-ui.js';
+import { createAdminOrderUI, captureOrders, filterAdminOrders, remainingOrderCapture, privateOrderExport,
+  orderItemImagePath, formatOrderMoney, splitItemTitle, shipToSummary, ADMIN_ORDER_STATUSES } from '../admin-order-ui.js';
 
 class Element {
   constructor(tag = 'div') {
@@ -16,6 +17,7 @@ class Element {
   get textContent() { return (this.text || '') + this.children.map(child => child.textContent).join(''); }
   append(...children) { this.children.push(...children); }
   setAttribute(key, value) { this.attributes[key] = value; }
+  removeAttribute(key) { delete this.attributes[key]; if (key === 'src') this.src = undefined; }
   addEventListener(name, handler) {
     const list = this.handlers.get(name) || [];
     this.handlers.set(name, [...list, handler]);
@@ -37,7 +39,7 @@ function order(uid = 'buyer-a', id = 'same', extra = {}) {
     notes: 'Customer note', ...extra };
 }
 
-function fixture({ list, update, remove, download } = {}) {
+function fixture({ list, update, remove, download, copyText, baseURI } = {}) {
   const html = readFileSync(new URL('../admin.html', import.meta.url), 'utf8');
   const elements = new Map([...html.matchAll(/<([a-z][a-z0-9]*)\b[^>]*\bid="([^"]+)"/g)].map(match => [match[2], new Element(match[1])]));
   const get = id => elements.get(id);
@@ -62,10 +64,10 @@ function fixture({ list, update, remove, download } = {}) {
     const element = new Element(tag);
     element.ownerDocument = document;
     return element;
-  }, activeElement: new Element('button') };
+  }, activeElement: new Element('button'), baseURI };
   for (const element of elements.values()) element.ownerDocument = document;
   document.activeElement.ownerDocument = document;
-  const ui = createAdminOrderUI({ document, service,
+  const ui = createAdminOrderUI({ document, service, ...(copyText ? { copyText } : {}),
     download: (...args) => { downloads.push(args); if (download) return download(...args); } });
   ui.setAccount('admin');
   get('order-scope').value = 'all';
@@ -138,7 +140,7 @@ test('order details organize full synthetic customer data and intact amounts wit
   assert.ok(body.textContent.includes(record.notes));
   assert.equal(elements.filter(element => element.tagName === 'script').length, 0);
   assert.deepEqual(elements.filter(element => element.className === 'admin-money').map(element => element.textContent),
-    ['$1234.56', '$3703.68', '$3703.68']);
+    ['$3,703.68', '$1,234.56', '$3,703.68', '$3,703.68']);
   const image = elements.find(element => element.tagName === 'img');
   assert.equal(image.src, record.items[0].img);
   assert.equal(image.alt, '');
@@ -146,8 +148,9 @@ test('order details organize full synthetic customer data and intact amounts wit
   assert.equal(image.src, 'images/placeholder.png');
   assert.ok(elements.some(element => element.className === 'order-status status-shipped'));
   const row = f.get('account-order-rows').children[0];
-  assert.equal(row.children[6].className, 'admin-money');
-  assert.equal(row.children[8].className, 'admin-actions');
+  assert.equal(row.children[5].className, 'admin-order-total-cell');
+  assert.deepEqual(row.children[5].children.map(element => element.textContent), ['$3,703.68', '3 items']);
+  assert.equal(row.children[6].className, 'admin-actions');
   assert.deepEqual(f.writes, []);
   assert.deepEqual(f.deletes, []);
 });
@@ -493,7 +496,7 @@ test('actual page dialog markup is accessible and dangerous pending operations t
 test('nested details and cancellation dialogs restore each opener in sequence on cancel and successful mutation', async () => {
   const f = fixture();
   await f.ui.refresh();
-  const rowButton = f.get('account-order-rows').children[0].children[8].children[0];
+  const rowButton = f.get('account-order-rows').children[0].children[6].children[0];
   rowButton.focus();
   await rowButton.emit('click');
   assert.equal(f.document.activeElement, f.get('order-details-close'));
@@ -513,7 +516,135 @@ test('nested details and cancellation dialogs restore each opener in sequence on
   await f.get('order-danger-confirm').emit('click');
   assert.equal(f.document.activeElement, f.get('order-save-status'), 'successful cancellation restores focus after loading ends');
   await f.get('order-details-close').emit('click');
-  const currentRowButton = f.get('account-order-rows').children[0].children[8].children[0];
+  const currentRowButton = f.get('account-order-rows').children[0].children[6].children[0];
   assert.equal(f.document.activeElement, currentRowButton, 'post-mutation details closes onto the visible replacement row control');
   assert.notEqual(f.document.activeElement, f.get('order-save-status'));
+});
+
+const descendantsOf = element => [element, ...element.children.flatMap(child => typeof child === 'object' ? descendantsOf(child) : [])];
+
+test('order item images keep exact-case site paths and map this site\'s own absolute URLs back to them', () => {
+  const page = 'https://www.jgv3d.com/admin.html';
+  const withUser = new URL('https://www.jgv3d.com/images/a.png');
+  withUser.username = 'synthetic';
+  for (const [raw, expected] of [
+    ['images/Stratocaster/Blank/HSS/Red.PNG', 'images/Stratocaster/Blank/HSS/Red.PNG'],
+    ['./images/Telecaster/Blank/white.PNG', 'images/Telecaster/Blank/white.PNG'],
+    // What the shop used to save: the card's resolved img.src.
+    ['https://www.jgv3d.com/images/Stratocaster/Blank/HSS/Red.PNG', 'images/Stratocaster/Blank/HSS/Red.PNG'],
+    ['https://jgv3d.com/images/Stratocaster/CTS/Blue.png', 'images/Stratocaster/CTS/Blue.png'],
+    ['https://dvdspncr334.github.io/Website/images/Telecaster/Blank/white.PNG', 'images/Telecaster/Blank/white.PNG'],
+    ['https://www.jgv3d.com/images/Synthetic%20Body/Red.PNG', 'images/Synthetic Body/Red.PNG'],
+    ['', ''], [null, ''], ['javascript:alert(1)', ''], ['data:image/png;base64,AAAA', ''],
+    ['https://tracker.example.test/images/a.png', ''], ['//www.jgv3d.com/images/a.png', ''],
+    ['http://www.jgv3d.com/images/a.png', ''], [withUser.href, ''],
+    ['https://dvdspncr334.github.io/images/a.png', ''], ['/images/a.png', ''], ['images/../private.png', ''],
+    ['https://www.jgv3d.com/images/%2e%2e/admin.png', ''], ['https://www.jgv3d.com/images/a.svg', ''],
+    ['images/a.png" onerror="alert(1)', ''], ['images\\a.png', '']
+  ]) assert.equal(orderItemImagePath(raw, page), expected, String(raw));
+  assert.equal(orderItemImagePath('http://localhost:8000/images/Stratocaster/CTS/Red.png', 'http://localhost:8000/admin.html'),
+    'images/Stratocaster/CTS/Red.png', 'a local preview origin is the page\'s own base');
+  assert.equal(orderItemImagePath('http://localhost:8000/images/a.png', 'https://www.jgv3d.com/admin.html'), '');
+  assert.equal(orderItemImagePath('https://www.jgv3d.com/Website/images/Stratocaster/CTS/Red.png', 'https://www.jgv3d.com/Website/admin.html'),
+    'images/Stratocaster/CTS/Red.png', 'a rejected match on one base still tries the page base');
+});
+
+test('detail thumbnails are bounded, fall back once with a visible label and never loop when the placeholder fails', async () => {
+  const items = [
+    { id: 'abs', title: 'Synthetic Body (Right, Red, HSS)', img: 'https://www.jgv3d.com/images/Stratocaster/Blank/HSS/Red.PNG', qty: 1, price: 199.99 },
+    { id: 'gone', title: 'Synthetic missing photo', img: 'images/does-not-exist.png', qty: 2, price: 5 },
+    { id: 'none', title: 'Legacy item', img: '', qty: 1, price: 1 }
+  ];
+  const record = order('synthetic', 'JGV-00000001', { items, total: 211.99 });
+  const f = fixture({ list: async () => [record], baseURI: 'https://www.jgv3d.com/admin.html' });
+  await f.ui.refresh();
+  f.ui.openDetails(record.path);
+  const frames = descendantsOf(f.get('order-details-body')).filter(element => /^admin-order-thumb( |$)/.test(element.className || ''));
+  assert.equal(frames.length, 3);
+  const [valid, broken, missing] = frames.map(frame => ({ frame, image: frame.children[0], label: frame.children[1] }));
+  for (const { image } of [valid, broken, missing]) {
+    assert.equal(image.width, 88);
+    assert.equal(image.height, 88);
+    assert.equal(image.alt, '');
+  }
+  assert.equal(valid.image.src, 'images/Stratocaster/Blank/HSS/Red.PNG');
+  assert.equal(valid.label.hidden, true);
+  assert.equal(missing.image.src, 'images/placeholder.png');
+  assert.equal(missing.label.textContent, 'Image unavailable');
+  assert.equal(missing.label.hidden, false);
+  assert.equal(broken.image.src, 'images/does-not-exist.png');
+  await broken.image.emit('error');
+  assert.equal(broken.image.src, 'images/placeholder.png');
+  assert.equal(broken.frame.className, 'admin-order-thumb is-unavailable');
+  assert.equal(broken.label.hidden, false);
+  await broken.image.emit('error');
+  assert.equal(broken.image.hidden, true, 'a failed placeholder is hidden, leaving the label');
+  assert.equal(broken.image.src, undefined);
+  await broken.image.emit('error');
+  assert.equal(broken.image.src, undefined, 'no recursive fallback');
+  const text = f.get('order-details-body').textContent;
+  assert.match(text, /Synthetic Body.*Right, Red, HSS.*ID: abs/);
+  assert.match(text, /Total\$211\.99/);
+});
+
+test('order rows show every status as one pill, formatted totals with counts and a copyable full document path', async () => {
+  const copies = [];
+  const records = ADMIN_ORDER_STATUSES.map((status, index) => order(`synthetic-${index}`, `JGV-0000000${index}`, {
+    status, date: `2026-10-0${index + 1}T12:00:00Z`, items: [{ id: 'a', title: 'A', qty: index + 1, price: 1234.5 }], total: 1234.5 * (index + 1)
+  }));
+  const f = fixture({ list: async () => records, copyText: async text => { copies.push(text); } });
+  await f.ui.refresh();
+  const rows = f.get('account-order-rows').children;
+  assert.equal(rows.length, 5);
+  const pills = rows.map(row => row.children[4].children);
+  assert.deepEqual(pills.map(children => children.length), [1, 1, 1, 1, 1]);
+  assert.deepEqual(pills.map(([pill]) => pill.className), ['status-cancelled', 'status-completed', 'status-shipped', 'status-in-progress', 'status-queued'].map(name => `order-status ${name}`));
+  assert.deepEqual(rows.map(row => row.children[5].children.map(element => element.textContent)).at(0), ['$6,172.50', '5 items']);
+  assert.deepEqual(rows.at(-1).children[5].children[1].textContent, '1 item');
+  const identity = rows[0].children[1];
+  assert.equal(identity.children[0].className, 'admin-order-id');
+  const path = identity.children[1];
+  assert.equal(path.tagName, 'details', 'the technical path is collapsed behind a disclosure');
+  assert.equal(path.children[0].textContent, 'Document path');
+  assert.equal(path.children[1].textContent, records[4].path);
+  rows[0].children[0].children[0].checked = true;
+  await rows[0].children[0].children[0].emit('change');
+  await path.children[2].emit('click');
+  assert.deepEqual(copies, [records[4].path]);
+  assert.equal(path.children[2].textContent, 'Copied');
+  assert.match(f.get('account-orders-status').textContent, /Copied document path/, 'result is announced in the status region');
+  assert.deepEqual(f.ui.state().selected, [records[4].path], 'copying never changes path-keyed selection');
+  const failing = fixture({ list: async () => records, copyText: async () => { throw new Error('denied'); } });
+  await failing.ui.refresh();
+  const failingButton = failing.get('account-order-rows').children[0].children[1].children[1].children[2];
+  await failingButton.emit('click');
+  assert.match(failingButton.textContent, /Copy failed/);
+  assert.match(failing.get('account-orders-status').textContent, /Couldn't copy/);
+  const noClipboard = fixture({ list: async () => records });
+  await noClipboard.ui.refresh();
+  const noClipboardButton = noClipboard.get('account-order-rows').children[0].children[1].children[1].children[2];
+  await noClipboardButton.emit('click');
+  assert.match(noClipboardButton.textContent, /Copy failed/, 'a missing clipboard API is never reported as copied');
+  assert.deepEqual(f.writes, []);
+  assert.deepEqual(f.deletes, []);
+});
+
+test('money, item titles and ship-to summaries format for compact display', () => {
+  assert.equal(formatOrderMoney(1234567.891), '$1,234,567.89');
+  assert.equal(formatOrderMoney(0), '$0.00');
+  assert.equal(formatOrderMoney(Number.NaN), '$0.00');
+  assert.deepEqual(splitItemTitle('Stratocaster Body (Right, Red, HSS)'), { base: 'Stratocaster Body', options: 'Right, Red, HSS' });
+  assert.deepEqual(splitItemTitle('Plain item'), { base: 'Plain item', options: '' });
+  assert.equal(shipToSummary({ firstName: 'Testy', lastName: 'Example', streetAddress1: '1 Hidden St', city: 'Sample', state: 'ST', postalCode: '00000', country: 'Nowhere' }),
+    'Testy Example · Sample, ST · Nowhere');
+  assert.equal(shipToSummary({}), '');
+});
+
+test('details for an order without saved items show a readable empty state', async () => {
+  const record = order('synthetic', 'JGV-00000009', { items: [], total: 0 });
+  const f = fixture({ list: async () => [record] });
+  await f.ui.refresh();
+  f.ui.openDetails(record.path);
+  assert.match(f.get('order-details-body').textContent, /No items were saved with this order\./);
+  assert.match(f.get('order-details-body').textContent, /Order total: \$0\.00/);
 });
