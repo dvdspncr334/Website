@@ -1906,6 +1906,33 @@ footer a:hover {
   flex-wrap: wrap;
 }
 
+.admin-page {
+  color-scheme: dark;
+}
+
+.admin-page *,
+.admin-page *::before,
+.admin-page *::after {
+  box-sizing: border-box;
+}
+
+.admin-page :focus-visible {
+  outline: 2px solid #f0b27a;
+  outline-offset: 2px;
+}
+
+.admin-page .header {
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.admin-page .header-buttons,
+.admin-page .header h1,
+.admin-panel,
+.admin-field {
+  min-width: 0;
+}
+
 .admin-user {
   color: #bbb;
   font-size: 0.9em;
@@ -1942,6 +1969,9 @@ footer a:hover {
   padding: 20px 24px;
   margin-bottom: 20px;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  border: 1px solid #444;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .admin-card h2 {
@@ -2013,6 +2043,11 @@ footer a:hover {
   margin: 12px 0;
 }
 
+.admin-toolbar > * {
+  max-width: 100%;
+  min-width: 0;
+}
+
 .admin-btn {
   display: inline-block;
   padding: 10px 18px;
@@ -2024,6 +2059,10 @@ footer a:hover {
   text-decoration: none;
   cursor: pointer;
   transition: background 0.2s;
+  font-family: inherit;
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
 }
 
 .admin-btn:hover {
@@ -2068,6 +2107,17 @@ footer a:hover {
   font-family: inherit;
   box-sizing: border-box;
   max-width: 100%;
+  min-width: 0;
+}
+
+.admin-page textarea.admin-input {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.admin-page .admin-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .admin-toolbar .admin-input {
@@ -2115,6 +2165,8 @@ footer a:hover {
 .admin-status {
   color: #bbb;
   margin: 8px 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .admin-status:empty {
@@ -2135,6 +2187,9 @@ footer a:hover {
 
 .admin-table-wrap {
   overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid #444;
+  border-radius: 6px;
 }
 
 .admin-table {
@@ -2155,19 +2210,45 @@ footer a:hover {
 .admin-table th {
   color: #e67e22;
   white-space: nowrap;
+  background: #2a2a2a;
+}
+
+.admin-page .admin-money,
+.admin-page #product-table td:nth-child(4),
+.admin-page #order-rows td:last-child {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-page .admin-money {
+  text-align: right;
+}
+
+.admin-page #account-order-rows > tr > td:nth-child(2) {
+  min-width: 14rem;
+}
+
+.admin-page #account-order-rows > tr > td:nth-child(3),
+.admin-page #account-order-rows > tr > td:nth-child(8) {
+  min-width: 12rem;
 }
 
 .admin-actions {
-  white-space: nowrap;
+  min-width: 10rem;
 }
 
 .admin-actions .admin-btn + .admin-btn {
-  margin-left: 6px;
+  margin: 6px 0 0;
+}
+
+.admin-actions .admin-btn {
+  display: block;
 }
 
 .admin-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 14px;
   margin: 16px 0;
 }
@@ -2191,13 +2272,18 @@ footer a:hover {
 .admin-dialog {
   width: min(760px, calc(100% - 40px));
   max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   overflow: auto;
   box-sizing: border-box;
   background: #333;
-  color: #eee;
-  border: 1px solid #e67e22;
+  color: #fff;
+  border: 1px solid #444;
   border-radius: 8px;
   padding: 24px;
+  font: inherit;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
 .admin-dialog::backdrop {
@@ -2207,6 +2293,115 @@ footer a:hover {
 .admin-dialog h2 {
   color: #e67e22;
   margin-top: 0;
+}
+
+.admin-page .admin-order-details {
+  width: min(960px, calc(100% - 40px));
+}
+
+.admin-page .admin-order-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.admin-page .order-status {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.admin-page .admin-order-info {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.admin-page .admin-order-info > section {
+  min-width: 0;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.admin-page .admin-order-info h3 {
+  color: #e67e22;
+  margin: 0 0 12px;
+}
+
+.admin-page .admin-order-copy {
+  color: #ddd;
+  margin: 0 0 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-style: normal;
+}
+
+.admin-page .admin-order-item {
+  min-width: 13rem;
+}
+
+.admin-page .admin-order-item img {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #222;
+  margin-bottom: 8px;
+}
+
+.admin-page .admin-order-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 0;
+  border-bottom: 1px solid #444;
+}
+
+.admin-page .admin-order-total p {
+  margin: 0;
+}
+
+.admin-page .admin-order-total strong {
+  color: #e67e22;
+  font-size: 1.2em;
+}
+
+.admin-page .admin-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 16px 0;
+  color: #ddd;
+}
+
+.admin-page .admin-check input {
+  flex-shrink: 0;
+}
+
+.admin-page #order-detail-path {
+  max-width: 100%;
+  margin: 0 0 16px;
+  color: #bbb;
+}
+
+.admin-page #order-session-log,
+.admin-page .admin-order-paths {
+  padding: 12px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.admin-page #order-session-log:empty {
+  display: none;
 }
 
 .admin-dialog .admin-field {
@@ -2250,7 +2445,7 @@ footer a:hover {
   padding: 10px;
   border: 1px solid #555;
   border-radius: 6px;
-  background: #161616;
+  background: #2a2a2a;
   color: #eee;
   font: inherit;
 }
@@ -2260,9 +2455,14 @@ footer a:hover {
   margin: 4px;
   border: 1px solid #e67e22;
   border-radius: 6px;
-  background: #252525;
+  background: #2a2a2a;
   color: #eee;
   cursor: pointer;
+  font: inherit;
+}
+
+.product-creator button:hover:not(:disabled) {
+  background: #d35400;
 }
 
 .product-creator button:disabled {
@@ -2350,5 +2550,25 @@ footer a:hover {
 
   .admin-card {
     padding: 16px;
+  }
+
+  .admin-page .admin-order-info {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-page .admin-dialog {
+    width: calc(100% - 24px);
+    max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
+    padding: 16px;
+  }
+
+  .admin-page .admin-dialog .admin-toolbar .admin-btn {
+    flex: 1 1 180px;
+  }
+
+  .admin-page .header-buttons {
+    justify-content: center;
+    gap: 10px;
   }
 }

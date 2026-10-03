@@ -73,6 +73,22 @@ test('dashboard is first, all five tabs are linked to accessible panels, and dia
   assert.doesNotMatch(admin, /id="bulk-open"/);
 });
 
+test('order controls reuse labelled dark site inputs and details styling is admin-scoped and responsive', () => {
+  for (const id of ['order-scope', 'order-filter-id', 'order-filter-status', 'order-filter-email',
+    'order-next-status', 'order-cancel-reason', 'order-delete-phrase']) {
+    assert.match(admin, new RegExp(`<label[^>]*>[\\s\\S]*?<${id === 'order-cancel-reason' ? 'textarea' : '(?:input|select)'} class="admin-input" id="${id}"`));
+  }
+  assert.match(admin, /id="order-reason-label" class="admin-field" hidden/);
+  assert.match(admin, /id="order-delete-phrase-label" class="admin-field" hidden/);
+  const css = read('style.css');
+  assert.match(css, /\.admin-dialog \{[^}]*background: #333;[^}]*color: #fff;[^}]*font: inherit;/);
+  assert.match(css, /\.admin-page \.admin-order-info \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.admin-page \.admin-order-info \{[^}]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(css, /\.admin-page \.admin-money,[^{]+\{[^}]*white-space: nowrap;[^}]*overflow-wrap: normal;/);
+  assert.match(css, /\.admin-page \.admin-order-item img \{[^}]*width: 64px;[^}]*height: 64px;[^}]*object-fit: contain;/);
+  assert.match(css, /\.admin-page :focus-visible/);
+});
+
 // A minimal DOM fixture exercises the actual inline controller without Firebase
 // network calls or a browser dependency. Helpers are the production implementations.
 class Element {

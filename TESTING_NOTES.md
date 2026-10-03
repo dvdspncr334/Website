@@ -119,3 +119,19 @@
 - Signed out → redirected to `login.html`; non-admin → `login.html?admin=denied` with a message.
 - Console-bootstrapped admin → dashboard loads with no cart badge; product add/edit/delete with validation errors; Download CSV produced the expected file.
 - User Activity, Orders (read-only account orders from Firestore plus labelled local demo orders, markup shown as text), Settings: invalid email / unknown user / already-admin errors, add and remove admin, remove self → access denied; logout clears the admin cache; 390px-wide layout.
+
+### Admin visual/layout verification
+
+- Order details are the native `order-details-dialog` in `admin.html`, populated by `admin-order-ui.js`, not a separate admin details route.
+- `npm test`: 231 passed, 24 emulator tests skipped. Targeted admin page/order tests: 76 passed, including long IDs, synthetic contact/notes, literal HTML-like text, safe local thumbnails/fallbacks, status badges, and two-decimal amounts.
+- `npm run test:rules` was attempted but could not start (`firebase: not found`). No rules or schema changes are required for this presentation-only update.
+- Headless Chrome at 1440px, 390px, and 320px: checked dashboard, shop, activity, orders, settings, detail/status/cancellation, delete, generic confirmation, and bulk-update layouts. Verified dark controls/fonts, desktop two-column details/mobile stacking, 64px thumbnails, intact prices, page overflow containment, scrollable dialogs, hidden cancellation fields, exact delete-phrase enablement, and Escape/focus restoration.
+- Browser checks used the real admin markup with its Firebase-loading inline script omitted. Order UI used injected synthetic read services with writes blocked; other panels used synthetic rows. Loading, empty, and failed reads were exercised. Unit tests cover actual admin controller wiring and mutation confirmations. Live Firebase authorization/writes, payment, GitHub publication, and real device browsers were not exercised.
+- All screenshots contain synthetic data only. No production reads/writes or real buyer contact information were used.
+
+| Order details | Before | After |
+| --- | --- | --- |
+| Desktop | ![Before desktop](test/screenshots/admin-layout/before-details-desktop.png) | ![After desktop](test/screenshots/admin-layout/after-details-desktop.png) |
+| Mobile | ![Before mobile](test/screenshots/admin-layout/before-details-mobile.png) | ![After mobile](test/screenshots/admin-layout/after-details-mobile.png) |
+
+Scrolled item totals/status actions: [desktop](test/screenshots/admin-layout/after-details-actions-desktop.png), [mobile](test/screenshots/admin-layout/after-details-actions-mobile.png).
