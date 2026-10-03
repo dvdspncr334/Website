@@ -414,7 +414,7 @@
         }
       } catch (error) {
         if (checkout !== session) return;
-        setCheckoutMessage(`We couldn't load your saved address (${friendlyAccountError(error)}) You can still enter it below.`, 'error');
+        setCheckoutMessage(`We couldn't load your saved address: ${friendlyAccountError(error)} You can still enter it below.`, 'error');
       }
       setCheckoutLoading('');
       shippingForm.focusFirst();
@@ -460,8 +460,17 @@
       let order;
       try {
         api = await loadAccountData();
-        order = buildOrder({ items, shipping, notes, email: api.currentEmail() });
-        await api.placeOrder(session.uid, order);
+        // Order numbers come from the clock; on the rare clash with an
+        // earlier order, retry with a new number instead of failing.
+        for (let attempt = 0; ; attempt += 1) {
+          order = buildOrder({ items, shipping, notes, email: api.currentEmail(), now: new Date(Date.now() + attempt) });
+          try {
+            await api.placeOrder(session.uid, order);
+            break;
+          } catch (error) {
+            if (!error || error.code !== 'order-exists' || attempt >= 2 || checkout !== session) throw error;
+          }
+        }
       } catch (error) {
         if (checkout !== session) return;
         session.busy = false;
@@ -479,7 +488,7 @@
         try {
           await api.saveShipping(session.uid, shipping);
         } catch (error) {
-          warnings.push(`Your address couldn't be saved for next time (${friendlyAccountError(error)}) — you can add it in Account → Settings.`);
+          warnings.push(`Your address couldn't be saved for next time: ${friendlyAccountError(error)} You can add it in Account → Settings.`);
         }
       }
       setCheckoutLoading('Updating your cart…');

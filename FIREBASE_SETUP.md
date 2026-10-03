@@ -86,7 +86,7 @@ Visit `https://dvdspncr334.github.io/login.html` and:
 - **"Save this address for next time"** is unticked by default. The address is saved to the account only when it is ticked.
 - **Account → Settings** (on `login.html`; link straight to it with `login.html#settings`) shows the saved address, with **Edit/Add address**, **Save changes** and **Delete** (asks for confirmation). Past orders keep the address they were shipped to.
 - **Privacy:** each buyer sees only their own orders and address. Admins can read every order and address. Addresses and orders are **never stored in browser storage** (Firestore uses its in-memory cache). On sign-out or an account switch, the checkout dialog closes and the Settings form, orders list and order details are cleared, so the next person never sees the previous account's data.
-- **No payment is taken.** Item prices and totals come from the buyer's browser (the same values the cart shows), so confirm them with the buyer before charging.
+- **No payment is taken.** Item prices and totals come from the buyer's browser (the same values the cart shows), so confirm them with the buyer before charging. The rules check the order's fields, address and item count, but Firestore rules can't check each item in a list, so item details and the total aren't verified on the server.
 - **Old demo orders:** orders created before this change were saved only in the buyer's browser (`localStorage` key `jgv3d_orders`). They are left untouched and are **not** imported into Firestore. *My Orders* now shows only account orders; the admin *Orders* tab still lists the old demo orders stored in the admin's own browser, in a separately labelled table.
 
 ## Remaining Firebase Console / deployment steps (required for account carts)
