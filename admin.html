@@ -158,22 +158,37 @@
       <section id="panel-orders" class="admin-panel" role="tabpanel" aria-labelledby="tab-orders" hidden>
         <div class="admin-card">
           <h2>Account orders (Firestore)</h2>
-          <p class="admin-note">Orders placed by signed-in buyers, saved in Firestore at <code>users/{uid}/orders/{orderId}</code> with their shipping details. Guests can't place orders. This table is read-only: change an order's status in the Firebase Console. Item prices and totals come from the buyer's browser, so confirm them before taking payment.</p>
+          <p class="admin-note"><strong>Default scope: your signed-in admin account's own orders. Select ALL accounts explicitly to manage other customers' orders.</strong> Orders placed by signed-in buyers are saved at <code>users/{uid}/orders/{orderId}</code>. Guests can't place orders. Item prices and totals come from the buyer's browser; verify them before taking payment. Refresh loads a current snapshot, not a live subscription.</p>
+          <p class="admin-note admin-warning">Status changes and deletion affect order records only: no refunds, payments, shipping notifications or stock adjustments. Private JSON exports contain customer data: download only when needed, keep them secure, and never share them publicly.</p>
+          <div class="admin-toolbar">
+            <label>Account scope <select id="order-scope"><option value="own">My signed-in account's orders (default)</option><option value="all">ALL accounts — admin access required</option></select></label>
+            <label>Order ID <input id="order-filter-id" type="search" autocomplete="off"></label>
+            <label>Status <select id="order-filter-status"><option value="">All statuses</option><option>In Queue</option><option>In Progress</option><option>Shipped</option><option>Completed</option><option>Cancelled</option></select></label>
+            <label>Customer email <input id="order-filter-email" type="search" autocomplete="off"></label>
+          </div>
           <div class="admin-toolbar">
             <button type="button" class="admin-btn admin-btn-outline" id="orders-refresh">Refresh account orders</button>
+            <button type="button" class="admin-btn admin-btn-outline" id="order-export-filtered" disabled>Download filtered private JSON</button>
+            <button type="button" class="admin-btn admin-btn-danger" id="order-delete-selected" disabled>Delete selected documents</button>
+            <button type="button" class="admin-btn admin-btn-danger" id="order-delete-filtered" disabled>Delete captured filtered result</button>
           </div>
+          <p id="order-selection-count" class="admin-note"></p>
           <p id="account-orders-status" class="admin-status" role="status"></p>
           <div class="admin-table-wrap">
             <table class="admin-table">
-              <thead><tr><th>Order</th><th>Customer</th><th>Date</th><th>Status</th><th>Items</th><th>Total</th><th>Ship to</th></tr></thead>
+              <thead><tr><th><input id="order-select-all" type="checkbox" aria-label="Select all currently filtered document paths" disabled></th><th>Order / exact document path</th><th>Customer</th><th>Date</th><th>Status</th><th>Items</th><th>Total</th><th>Ship to</th><th>Actions</th></tr></thead>
               <tbody id="account-order-rows"></tbody>
             </table>
           </div>
+          <h3>Client session log (non-authoritative)</h3>
+          <p class="admin-note">Memory-only counts and lifecycle statuses; no customer details. This is not a server audit log and clears on account change or refresh.</p>
+          <pre id="order-session-log" role="log"></pre>
         </div>
         <div class="admin-card">
           <h2>Local demo orders (this browser only)</h2>
           <p class="admin-note admin-warning"><strong>Local demo orders are browser-local demo data.</strong> Before account orders existed, checkout saved demo orders only in the shopper's own browser (<code>localStorage</code>). They were never sent to a server. The table below only shows old demo orders saved in <em>this</em> browser, read-only, for reference; they are not imported into Firestore.</p>
           <p id="orders-status" class="admin-status" role="status"></p>
+          <button type="button" class="admin-btn admin-btn-danger" id="reset-orders">Reset browser-local demo orders</button>
           <div class="admin-table-wrap">
             <table class="admin-table">
               <thead><tr><th>Order</th><th>Date</th><th>Status</th><th>Items</th><th>Total</th></tr></thead>
@@ -196,7 +211,7 @@
           <p class="admin-note admin-warning">Activity deletion removes tracking records only, never Firebase Auth accounts or admin access. Users can create new activity when they return. Order reset affects only old demo orders in this browser, not Firestore account orders, carts or accounts.</p>
           <div class="admin-toolbar">
             <button type="button" class="admin-btn admin-btn-danger" id="clear-activity">Clear all user activity</button>
-            <button type="button" class="admin-btn admin-btn-danger" id="reset-orders">Reset browser-local demo orders</button>
+            <button type="button" class="admin-btn admin-btn-danger" id="reset-orders-settings">Reset browser-local demo orders</button>
           </div>
           <p id="maintenance-status" class="admin-status" role="status"></p>
         </div>
@@ -275,6 +290,37 @@
     </form>
   </dialog>
 
+  <dialog id="order-details-dialog" class="admin-dialog" aria-labelledby="order-details-title" aria-describedby="order-details-effects">
+    <h2 id="order-details-title">Order details</h2>
+    <p id="order-detail-path" class="admin-order-path"></p>
+    <div id="order-details-body"></div>
+    <p id="order-details-effects" class="admin-note admin-warning">Order records only: no refunds, payments, shipping notifications or stock adjustments. Buyer-provided prices and totals must be verified.</p>
+    <label>Lifecycle status <select id="order-next-status"><option>In Queue</option><option>In Progress</option><option>Shipped</option><option>Completed</option><option>Cancelled</option></select></label>
+    <label id="order-reason-label" hidden>Cancellation reason (optional, 500 characters maximum)<textarea id="order-cancel-reason" maxlength="500"></textarea></label>
+    <p id="order-details-status" class="admin-status" role="status"></p>
+    <div class="admin-toolbar">
+      <button type="button" id="order-save-status" class="admin-btn">Save lifecycle status</button>
+      <button type="button" id="order-details-close" class="admin-btn admin-btn-outline">Close details</button>
+    </div>
+  </dialog>
+  <dialog id="order-danger-dialog" class="admin-dialog" aria-labelledby="order-danger-title" aria-describedby="order-danger-description">
+    <h2 id="order-danger-title">Confirm order action</h2>
+    <p id="order-danger-description" class="admin-warning"></p>
+    <pre id="order-danger-paths" class="admin-order-paths"></pre>
+    <div id="order-delete-controls" hidden>
+      <p class="admin-note admin-warning">Optional backup: download the captured documents as private JSON, or explicitly skip the backup below. The export contains customer data and goes only to your browser download, not to a server. Download delivery is not verified.</p>
+      <button type="button" id="order-danger-export" class="admin-btn admin-btn-outline">Download captured private JSON</button>
+      <label><input id="order-private-export" type="checkbox"> I have saved the private JSON securely and understand this permanently deletes customer order data.</label>
+      <label><input id="order-skip-backup" type="checkbox"> Skip the optional backup. I understand permanently deleted customer order data cannot be recovered from this website.</label>
+      <label id="order-delete-phrase-label" hidden>Final confirmation: type DELETE ORDERS exactly <input id="order-delete-phrase" autocomplete="off"></label>
+    </div>
+    <p id="order-danger-status" class="admin-status" role="status"></p>
+    <div class="admin-toolbar">
+      <button type="button" id="order-danger-cancel" class="admin-btn admin-btn-outline">Keep orders / cancel action</button>
+      <button type="button" id="order-danger-confirm" class="admin-btn admin-btn-danger" disabled>Review final confirmation</button>
+    </div>
+  </dialog>
+
   <footer>
     <p>&copy; JGV3D &middot; Admin view</p>
   </footer>
@@ -286,15 +332,65 @@
       parseShopCSV, serializeShopCSV, validateProduct, validateAll, normalizeProduct, applyBulkUpdate
     } from './shop-csv.js';
     import { activityTime, activityStats, filterActivity, exportTableCSV, backupData, backupFilename, createSessionAudit } from './admin-tools.js';
-    import { normalizeOrder, sortOrdersNewestFirst, summarizeShipping } from './account-data.js';
     import { createProductCreator } from './product-creator.js';
     import { publishShop } from './github-publish.js';
+    import { createAdminOrderUI } from './admin-order-ui.js';
+    import { loadAdminOrders } from './admin-orders.js';
 
     const $ = id => document.getElementById(id);
     const EMAIL_RE = /^[^\s@<>()",;:]+@[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
     let fb = null;
     let currentUid = null;
     let authEpoch = 0;
+    let adminOrderServicePromise = null;
+    let adminOrderService = null;
+    let adminOrderServiceGeneration = 0;
+    async function orderServiceFor(expectedUid) {
+      const epoch = authEpoch;
+      const requestedGeneration = adminOrderServiceGeneration;
+      if (!currentUid || expectedUid !== currentUid) throw new Error('Admin account changed.');
+      if (!adminOrderServicePromise) {
+        const generation = adminOrderServiceGeneration;
+        const pending = loadAdminOrders();
+        adminOrderServicePromise = pending;
+        pending.then(service => {
+          if (generation === adminOrderServiceGeneration && pending === adminOrderServicePromise) adminOrderService = service;
+        }).catch(() => {
+          if (generation === adminOrderServiceGeneration && pending === adminOrderServicePromise) adminOrderServicePromise = null;
+        });
+      }
+      const service = await adminOrderServicePromise;
+      if (epoch !== authEpoch || requestedGeneration !== adminOrderServiceGeneration || expectedUid !== currentUid) throw new Error('Admin account changed.');
+      return service;
+    }
+    const orderUI = createAdminOrderUI({ document, service: {
+      listOrders: async ({ expectedUid, scope }) => (await orderServiceFor(expectedUid)).listOrders(scope, expectedUid),
+      setOrderStatus: async (path, status, { reason, expectedStatus, expectedUid }) =>
+        (await orderServiceFor(expectedUid)).updateStatus(path, expectedStatus, status, reason, expectedUid),
+      deleteOrders: async (paths, { expectedUid }) =>
+        (await orderServiceFor(expectedUid)).deleteOrders(paths, () => {}, expectedUid)
+    },
+      download: (contents, type, filename) => downloadFile(contents, filename, type), formatTime });
+    function clearPendingOrderActions() {
+      const pending = adminOrderServicePromise;
+      const service = adminOrderService;
+      const generation = ++adminOrderServiceGeneration;
+      adminOrderServicePromise = null;
+      adminOrderService = null;
+      if (service) {
+        service.invalidate();
+        service.dispose?.();
+      } else if (pending) {
+        pending.then(retired => {
+          if (generation <= adminOrderServiceGeneration && retired !== adminOrderService) {
+            retired.invalidate();
+            retired.dispose?.();
+          }
+        }).catch(() => {});
+      }
+      orderUI.setAccount(null);
+      if ($('reset-orders').disabled && $('confirm-dialog').open) $('confirm-dialog').close('cancelled');
+    }
     const loaded = {};
     let auditStorage = null;
     try { auditStorage = window.sessionStorage; } catch (e) { /* storage can be blocked */ }
@@ -455,6 +551,7 @@
     async function gate(user) {
       if (currentUid && user?.id === currentUid) return;
       const epoch = ++authEpoch;
+      clearPendingOrderActions();
       if (!user) {
         clearTransientProducts();
         clearAdminCache();
@@ -488,6 +585,7 @@
         return;
       }
       currentUid = user.id;
+      orderUI.setAccount(currentUid);
       $('admin-user').textContent = user.email;
       $('logout-btn').hidden = false;
       $('admin-gate').hidden = true;
@@ -503,6 +601,7 @@
     $('logout-btn').addEventListener('click', async () => {
       if (hasProductDrafts() && !confirm('You have unsaved product changes/photos. Discard them and log out?')) return;
       ++authEpoch;
+      clearPendingOrderActions();
       clearTransientProducts();
       showGate('Signing out…');
       clearAdminCache();
@@ -1429,10 +1528,15 @@
       }
     });
 
+    $('reset-orders-settings').addEventListener('click', () => $('reset-orders').click());
     $('reset-orders').addEventListener('click', async () => {
+      const epoch = authEpoch;
       $('reset-orders').disabled = true;
+      $('reset-orders-settings').disabled = true;
       try {
         if (!await confirmDestructive('Reset browser-local orders', 'Remove ONLY jgv3d_orders demo orders in this browser? No cart, account, or server data will be changed.')) return;
+        if (epoch !== authEpoch || !currentUid) return;
+        setStatus($('orders-status'), 'Resetting browser-local demo orders only…');
         let orderCount = 0;
         try {
           const orders = JSON.parse(localStorage.getItem('jgv3d_orders') || '[]');
@@ -1441,60 +1545,24 @@
         localStorage.removeItem('jgv3d_orders');
         recordAudit('Demo orders reset', 'Removed browser-local jgv3d_orders', orderCount);
         loadLocalOrders();
+        setStatus($('orders-status'), 'Browser-local demo orders reset. Firestore orders, carts and accounts are unchanged.', 'ok');
         setStatus($('maintenance-status'), 'Browser-local demo orders reset. No other stored data was removed.', 'ok');
       } catch (error) {
         setStatus($('maintenance-status'), 'Order reset failed. Browser storage may be blocked. Retry to reset demo orders.', 'error');
-      } finally { $('reset-orders').disabled = false; }
+        setStatus($('orders-status'), 'Order reset failed. Browser storage may be blocked. Retry to reset demo orders; Firestore orders are unchanged.', 'error');
+      } finally { $('reset-orders').disabled = false; $('reset-orders-settings').disabled = false; }
     });
 
-    /* ---------------- Orders (read-only) ---------------- */
+    /* ---------------- Orders ---------------- */
     function loadOrders() {
       loadLocalOrders();
-      loadAccountOrders();
+      return loadAccountOrders();
     }
 
-    // Every signed-in buyer's orders, via a collection-group query that
-    // firestore.rules only allows for admins.
-    const ACCOUNT_ORDER_LIMIT = 500;
-    let accountOrdersEpoch = 0;
     async function loadAccountOrders() {
-      const epoch = ++accountOrdersEpoch;
-      const status = $('account-orders-status');
-      const body = $('account-order-rows');
-      setStatus(status, 'Loading account orders…');
-      body.textContent = '';
-      $('orders-refresh').disabled = true;
-      try {
-        const { fs, db } = fb;
-        const snap = await fs.getDocs(fs.query(fs.collectionGroup(db, 'orders'), fs.limit(ACCOUNT_ORDER_LIMIT)));
-        if (epoch !== accountOrdersEpoch) return;
-        const emailByUid = new Map(activityUsers.map(user => [user.uid, user.email]));
-        const orders = sortOrdersNewestFirst(snap.docs
-          .filter(doc => doc.ref?.parent?.parent?.parent?.id === 'users')
-          .map(doc => ({ ...normalizeOrder(doc.data(), doc.id), uid: doc.ref.parent.parent.id })));
-        for (const order of orders) {
-          const count = order.items.reduce((sum, item) => sum + item.qty, 0);
-          const customer = order.email || emailByUid.get(order.uid) || `UID ${order.uid}`;
-          const shipTo = [summarizeShipping(order.shipping), order.shipping.phone && `Phone: ${order.shipping.phone}`,
-            order.shipping.deliveryNotes && `Delivery notes: ${order.shipping.deliveryNotes}`, order.notes && `Order notes: ${order.notes}`]
-            .filter(Boolean).join(' · ');
-          const tr = document.createElement('tr');
-          tr.append(cell(order.id || '—'), cell(customer), cell(formatTime(order.date)), cell(order.status), cell(count),
-            cell(`$${order.total.toFixed(2)}`), cell(shipTo || '—'));
-          body.append(tr);
-        }
-        setStatus(status, orders.length
-          ? `${orders.length} account order(s)${snap.size >= ACCOUNT_ORDER_LIMIT ? ` (showing the first ${ACCOUNT_ORDER_LIMIT})` : ''}.`
-          : 'No account orders yet.', 'ok');
-      } catch (error) {
-        if (epoch !== accountOrdersEpoch) return;
-        setStatus(status, `Couldn't load account orders. ${friendlyFirestoreError(error)} Use Refresh to retry.`, 'error');
-        handleDataError(error);
-      } finally {
-        if (epoch === accountOrdersEpoch) $('orders-refresh').disabled = false;
-      }
+      orderUI.setAccount(currentUid);
+      return orderUI.refresh();
     }
-    $('orders-refresh').addEventListener('click', loadAccountOrders);
 
     function loadLocalOrders() {
       const body = $('order-rows');

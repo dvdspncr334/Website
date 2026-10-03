@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="images/favicon.ico">
   <title>Order Details | JGV3D Guitar Bodies</title>
   <link rel="stylesheet" href="style.css">
@@ -37,7 +38,8 @@
       'In Queue': 'status-queued',
       'In Progress': 'status-in-progress',
       'Shipped': 'status-shipped',
-      'Completed': 'status-completed'
+      'Completed': 'status-completed',
+      'Cancelled': 'status-cancelled'
     };
 
     function formatPrice(num) {
@@ -117,11 +119,11 @@
       const deliveryNotes = order.shipping.deliveryNotes;
       const currentIndex = ORDER_STATUSES.indexOf(status);
 
-      const progressMarkup = ORDER_STATUSES.map((step, index) => {
+      const progressMarkup = ORDER_STATUSES.filter(step => step !== 'Cancelled').map((step, index) => {
         const classes = ['order-progress-step'];
-        if (index < currentIndex) {
+        if (status !== 'Cancelled' && index < currentIndex) {
           classes.push('is-complete');
-        } else if (index === currentIndex) {
+        } else if (status !== 'Cancelled' && index === currentIndex) {
           classes.push('is-active');
         }
         return `<li class="${classes.join(' ')}" ${index === currentIndex ? 'aria-current="step"' : ''}>${escapeHTML(step)}<span>${index < currentIndex ? 'Completed stage' : index === currentIndex ? 'Current status' : 'Upcoming stage'}</span></li>`;
@@ -178,8 +180,10 @@
           </div>
 
           <section class="order-progress" aria-label="Order progress">
-            <h3>Order Progress</h3>
-            <ol class="order-progress-track">${progressMarkup}</ol>
+            <h3>${status === 'Cancelled' ? 'Order Cancelled' : 'Order Progress'}</h3>
+            ${status === 'Cancelled'
+              ? `<p>This order was cancelled.${order.cancellationReason ? ` Reason: ${escapeHTML(order.cancellationReason)}` : ''} Cancellation records status only; it does not process a refund.</p>`
+              : `<ol class="order-progress-track">${progressMarkup}</ol>`}
           </section>
 
           <section class="order-detail-section">
@@ -204,9 +208,13 @@
 
     let api = null;
     let epoch = 0;
+    let currentUid = null;
+    let unsubscribeOrder = null;
 
     async function renderOrderDetails(uid) {
       const myEpoch = ++epoch;
+      if (unsubscribeOrder) unsubscribeOrder();
+      unsubscribeOrder = null;
       const orderId = getOrderReference();
       if (!orderId) {
         renderNotFound('missing order reference');
@@ -218,17 +226,19 @@
       }
       renderMessage('Loading order…', '');
       try {
-        const order = await api.getOrder(uid, orderId);
-        if (myEpoch !== epoch) return;
-        if (!order) {
-          renderNotFound(orderId);
-          return;
-        }
-        renderOrder(order);
+        unsubscribeOrder = api.subscribeOrder(uid, orderId, order => {
+          if (myEpoch !== epoch) return;
+          if (!order) renderNotFound(orderId);
+          else renderOrder(order);
+        }, error => {
+          if (myEpoch !== epoch) return;
+          renderMessage('Couldn\'t load this order', `<p>${escapeHTML(friendlyAccountError(error))}</p><p><button type="button" class="cart-status-retry" id="order-retry-btn">Retry</button></p>`);
+          document.getElementById('order-retry-btn').addEventListener('click', () => renderOrderDetails(currentUid));
+        });
       } catch (error) {
         if (myEpoch !== epoch) return;
         renderMessage('Couldn\'t load this order', `<p>${escapeHTML(friendlyAccountError(error))}</p><p><button type="button" class="cart-status-retry" id="order-retry-btn">Retry</button></p>`);
-        document.getElementById('order-retry-btn').addEventListener('click', () => renderOrderDetails(uid));
+        document.getElementById('order-retry-btn').addEventListener('click', () => renderOrderDetails(currentUid));
       }
     }
 
@@ -242,7 +252,10 @@
         return;
       }
       // Re-render (and drop the previous account's order) on any sign-in change.
-      api.onUserChanged(user => renderOrderDetails(user ? user.id : null));
+      api.onUserChanged(user => {
+        currentUid = user ? user.id : null;
+        renderOrderDetails(currentUid);
+      });
     }
 
     start();

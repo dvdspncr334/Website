@@ -5,9 +5,9 @@ rules_version = '2';
 // Only the signed-in owner can read or write their own cart at
 // users/{uid}/carts/current. The owner can also read/write their saved
 // shipping address (users/{uid}/profile/shipping) and create/read their own
-// orders (users/{uid}/orders/{orderId}); orders can't be edited or deleted
-// from the site. Admins (users with an admins/{uid} document) can read every
-// order and saved address, manage the admins list and read/delete
+// orders (users/{uid}/orders/{orderId}). Admins (users with an admins/{uid}
+// document) can update order status/cancellation metadata and delete orders,
+// read every order and saved address, manage the admins list and read/delete
 // userActivity. Everything else is denied by default.
 //
 // If your project already has rules for other data, MERGE the
@@ -126,11 +126,24 @@ service cloud.firestore {
       allow delete: if isOwner(uid);
     }
 
-    // Orders: the owner creates and reads their own; admins read all.
-    // No client can change or delete an order (use the Firebase Console).
+    function isValidAdminOrderUpdate() {
+      let data = request.resource.data;
+      return data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'cancellationReason', 'statusUpdatedAt', 'statusUpdatedBy'])
+        && data.keys().hasAll(['status', 'cancellationReason', 'statusUpdatedAt', 'statusUpdatedBy'])
+        && data.status in ['In Queue', 'In Progress', 'Shipped', 'Completed', 'Cancelled']
+        && isText(data.cancellationReason, 0, 500)
+        && (data.status == 'Cancelled' || data.cancellationReason == '')
+        && data.statusUpdatedBy == request.auth.uid
+        && data.statusUpdatedAt == request.time;
+    }
+
+    // Mutations apply only to this exact canonical order path, including legacy orders.
     match /users/{uid}/orders/{orderId} {
       allow read: if isOwner(uid) || isAdmin();
       allow create: if isOwner(uid) && isValidOrder(orderId, request.resource.data);
+      allow update: if isAdmin() && isValidAdminOrderUpdate();
+      allow delete: if isAdmin();
     }
 
     // Lets admins list every user's orders with a collection-group query.

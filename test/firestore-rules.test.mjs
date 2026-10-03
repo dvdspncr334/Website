@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { itemKey, planMutation, addOperation, removeOperation, changeQtyOperation } from '../cart-store.js';
 import { createFirestoreCartBackend } from '../cart-firebase.js';
 import { createAccountData, buildOrder } from '../account-data.js';
+import { createAdminOrders } from '../admin-orders.js';
 
 const emulator = process.env.FIRESTORE_EMULATOR_HOST;
 const skip = emulator ? false : 'FIRESTORE_EMULATOR_HOST not set (run `npm run test:rules`)';
@@ -340,7 +341,7 @@ test('other users cannot read, list or create orders for someone else', { skip }
   await assertFails(fs.getDocs(fs.collectionGroup(asUser('bob'), 'orders')), 'non-admins cannot list all orders');
 });
 
-test('admins can read every order and saved address, but cannot change them', { skip }, async () => {
+test('admins can read every order/address but only constrained order mutations are allowed', { skip }, async () => {
   const { assertFails, assertSucceeds } = rut;
   await seedAdmin('root');
   await seedDoc(orderPath('alice'), { ...orderFor('alice'), createdAt: new Date() });
@@ -351,8 +352,124 @@ test('admins can read every order and saved address, but cannot change them', { 
   assert.equal(all.size, 2);
   await assertSucceeds(fs.getDoc(fs.doc(root, shippingPath('alice'))));
   await assertFails(fs.updateDoc(fs.doc(root, orderPath('alice')), { status: 'Shipped' }));
-  await assertFails(fs.deleteDoc(fs.doc(root, orderPath('alice'))));
+  await assertSucceeds(fs.deleteDoc(fs.doc(root, orderPath('alice'))));
   await assertFails(fs.setDoc(fs.doc(root, shippingPath('alice')), { ...address(), lastUpdated: fs.serverTimestamp() }));
+});
+
+const statusChange = (status = 'Shipped', extra = {}) => ({
+  status, cancellationReason: '', statusUpdatedAt: fs.serverTimestamp(), statusUpdatedBy: 'root', ...extra
+});
+
+test('admin status updates preserve all immutable order fields and metadata is mandatory', { skip }, async () => {
+  const { assertFails, assertSucceeds } = rut;
+  await seedAdmin('root');
+  await seedDoc(orderPath('alice'), { ...orderFor('alice'), createdAt: new Date(), legacyExtra: { retain: true } });
+  const ref = fs.doc(asUser('root'), orderPath('alice'));
+  for (const status of ['In Queue', 'In Progress', 'Shipped', 'Completed', 'Cancelled']) {
+    await assertSucceeds(fs.updateDoc(ref, statusChange(status,
+      { cancellationReason: status === 'Cancelled' ? 'No stock' : '' })));
+  }
+  const bad = [
+    { status: 'Shipped' },
+    statusChange('Invented'),
+    statusChange('Cancelled', { cancellationReason: 'x'.repeat(501) }),
+    statusChange('Cancelled', { cancellationReason: 5 }),
+    statusChange('Shipped', { cancellationReason: 'Must be empty' }),
+    statusChange('Shipped', { statusUpdatedAt: new Date(0) }),
+    statusChange('Shipped', { statusUpdatedBy: 'alice' }),
+    statusChange('Shipped', { notes: 'changed' }),
+    statusChange('Shipped', { email: 'changed@example.com' }),
+    statusChange('Shipped', { shipping: address({ city: 'Dallas' }) }),
+    statusChange('Shipped', { total: 0 }),
+    statusChange('Shipped', { items: [] }),
+    statusChange('Shipped', { id: 'JGV-99999999' }),
+    statusChange('Shipped', { date: '2026-01-01' }),
+    statusChange('Shipped', { createdAt: fs.serverTimestamp() }),
+    statusChange('Shipped', { legacyExtra: fs.deleteField() }),
+    statusChange('Shipped', { unknown: 'injected' })
+  ];
+  for (const data of bad) await assertFails(fs.updateDoc(ref, data));
+  const stored = (await fs.getDoc(ref)).data();
+  assert.equal(stored.status, 'Cancelled');
+  assert.deepEqual(stored.legacyExtra, { retain: true });
+  await assertFails(fs.setDoc(ref, statusChange()), 'cannot replace order with metadata-only document');
+});
+
+test('owners, unrelated users and signed-out callers cannot edit/delete and revoked admin loses access', { skip }, async () => {
+  const { assertFails, assertSucceeds } = rut;
+  await seedAdmin('root');
+  await seedDoc(orderPath('alice'), { ...orderFor('alice'), createdAt: new Date() });
+  for (const uid of [null, 'alice', 'bob']) {
+    const ref = fs.doc(db(uid), orderPath('alice'));
+    await assertFails(fs.updateDoc(ref, statusChange('Cancelled', { statusUpdatedBy: uid || 'root' })));
+    await assertFails(fs.deleteDoc(ref));
+  }
+  const root = asUser('root');
+  await assertSucceeds(fs.deleteDoc(fs.doc(root, 'admins/root')));
+  await assertFails(fs.updateDoc(fs.doc(root, orderPath('alice')), statusChange()));
+  await assertFails(fs.deleteDoc(fs.doc(root, orderPath('alice'))));
+});
+
+test('legacy orders may receive status metadata without rewriting unknown or missing fields', { skip }, async () => {
+  const { assertSucceeds } = rut;
+  await seedAdmin('root');
+  const legacyPath = orderPath('alice', 'legacy-order');
+  await seedDoc(legacyPath, { status: 'In Queue', legacy: true, items: [], notes: 'keep' });
+  await assertSucceeds(fs.updateDoc(fs.doc(asUser('root'), legacyPath), statusChange('Cancelled',
+    { cancellationReason: 'x'.repeat(500) })));
+  assert.equal((await fs.getDoc(fs.doc(asUser('alice'), legacyPath))).data().notes, 'keep');
+});
+
+test('recursive collection-group access remains read-only for noncanonical order paths', { skip }, async () => {
+  const { assertFails, assertSucceeds } = rut;
+  await seedAdmin('root');
+  const root = asUser('root');
+  for (const otherPath of ['orders/top', 'archive/x/orders/old', 'users/alice/orders/o/children/c/orders/deep']) {
+    await seedDoc(otherPath, { status: 'In Queue' });
+    const ref = fs.doc(root, otherPath);
+    await assertSucceeds(fs.getDoc(ref));
+    await assertFails(fs.updateDoc(ref, statusChange()));
+    await assertFails(fs.deleteDoc(ref));
+    await assertFails(fs.setDoc(fs.doc(root, `${otherPath}-new`), statusChange()));
+  }
+  await assertSucceeds(fs.getDocs(fs.collectionGroup(root, 'orders')));
+  await assertFails(fs.getDocs(fs.collectionGroup(asUser('alice'), 'orders')));
+});
+
+test('order creates still require initial Queue and reject all admin metadata, even for admin owners', { skip }, async () => {
+  const { assertFails } = rut;
+  await seedAdmin('root');
+  const root = asUser('root');
+  for (const data of [
+    orderFor('root', { status: 'Cancelled' }),
+    orderFor('root', { cancellationReason: '' }),
+    orderFor('root', { statusUpdatedAt: fs.serverTimestamp(), statusUpdatedBy: 'root' })
+  ]) await assertFails(fs.setDoc(fs.doc(root, orderPath('root')), data));
+  await assertFails(fs.setDoc(fs.doc(root, orderPath('alice')), orderFor('root')), 'admins cannot create someone else\'s order');
+});
+
+test('real admin service lists, transactionally updates and deletes only captured full paths', { skip }, async () => {
+  const { assertSucceeds, assertFails } = rut;
+  await seedAdmin('root');
+  await seedDoc(orderPath('alice'), { ...orderFor('alice'), createdAt: new Date() });
+  await seedDoc(orderPath('bob'), { ...orderFor('bob'), createdAt: new Date() });
+  const root = asUser('root');
+  const api = createAdminOrders({ db: root, fs, auth: { currentUser: { uid: 'root' } } });
+  assert.deepEqual(await api.listOrders(), []);
+  assert.equal((await api.listOrders('all')).length, 2);
+  await assertSucceeds(api.updateStatus(orderPath('alice'), 'In Queue', 'Cancelled', 'No stock'));
+  await assert.rejects(api.updateStatus(orderPath('alice'), 'In Queue', 'Shipped'), { code: 'stale-order' });
+  const buyer = accountDataFor('alice');
+  assert.equal((await buyer.getOrder('alice', 'JGV-00012345')).cancellationReason, 'No stock');
+  const result = await api.deleteOrders([orderPath('alice')]);
+  assert.equal(result.deleted, 1);
+  assert.equal((await fs.getDoc(fs.doc(root, orderPath('bob')))).exists(), true);
+  await assertSucceeds(fs.deleteDoc(fs.doc(root, 'admins/root')));
+  await assertFails(api.updateStatus(orderPath('bob'), 'In Queue', 'Completed'));
+  const revoked = await api.deleteOrders([orderPath('bob')]);
+  assert.equal(revoked.deleted, 0);
+  assert.equal(revoked.remaining, 1);
+  assert.equal(revoked.error.code, 'permission-denied');
 });
 
 test('the real account-data client writes pass the rules', { skip }, async () => {

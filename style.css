@@ -1221,6 +1221,7 @@ footer a:hover {
 }
 
 .order-id {
+  overflow-wrap: anywhere;
   color: #e67e22;
   font-weight: bold;
   font-size: 1.15em;
@@ -1265,6 +1266,26 @@ footer a:hover {
 
 .status-completed {
   background: #28a745;
+}
+
+.status-cancelled {
+  background: #a93226;
+}
+
+.admin-order-path {
+  display: inline-block;
+  max-width: 28rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.admin-order-json,
+.admin-order-paths {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 35vh;
+  overflow: auto;
+  line-height: 1.5;
 }
 
 .order-summary-grid,

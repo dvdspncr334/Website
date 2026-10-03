@@ -71,8 +71,8 @@ test('orders pages read only the signed-in account orders from Firestore', () =>
     assert.match(html, /api\.onUserChanged\(/, page);
     assert.doesNotMatch(html, /localStorage|jgv3d_orders|order-utils\.js/, page);
   }
-  assert.match(read('orders.html'), /api\.listOrders\(uid\)/);
-  assert.match(read('order-details.html'), /api\.getOrder\(uid, orderId\)/);
+  assert.match(read('orders.html'), /api\.subscribeOrders\(uid,/);
+  assert.match(read('order-details.html'), /api\.subscribeOrder\(uid, orderId,/);
   assert.match(read('order-details.html'), /<h3>Shipping address<\/h3>/);
 });
 

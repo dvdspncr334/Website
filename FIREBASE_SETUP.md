@@ -80,7 +80,7 @@ Visit `https://dvdspncr334.github.io/login.html` and:
 | Data | Firestore path | Who can read | Who can write |
 | --- | --- | --- | --- |
 | Saved shipping address | `users/{uid}/profile/shipping` → `{ firstName, lastName, streetAddress1, streetAddress2, city, state, postalCode, country, phone, deliveryNotes, lastUpdated }` | That user, and admins | That user only (save/delete) |
-| Orders | `users/{uid}/orders/{orderId}` → `{ id, date, createdAt, status, items[{id,title,img,qty,price}], total, shipping{…address}, notes, email }` | That user, and admins (all users' orders) | That user can **create** only. Nobody can edit or delete an order from the site; change status in the Firebase Console. |
+| Orders | `users/{uid}/orders/{orderId}` → `{ id, date, createdAt, status, items[{id,title,img,qty,price}], total, shipping{…address}, notes, email }`, with optional lifecycle metadata | That user, and admins (all users' orders) | That user can **create** only. Admins can update lifecycle status/cancellation reason or permanently delete exact order documents. |
 
 - **Checkout:** clicking **Proceed to Checkout** opens a *Shipping details* dialog. It is filled in from the saved address if there is one. Required fields: first/last name, street address, city, state/region, postal code and country. Phone, apartment/suite, delivery notes and order notes are optional. All values are trimmed. **Place Order** saves the order to Firestore first (status `In Queue`, order number `JGV-########`), then removes the ordered items from the cart and goes to *My Orders*. If saving fails (permission denied, offline, …) the dialog stays open with an error, and the cart is not changed. Escape or **Cancel** closes the dialog without ordering.
 - **"Save this address for next time"** is unticked by default. The address is saved to the account only when it is ticked.
@@ -128,14 +128,14 @@ This pull request **does not** create your database or publish rules. Until you 
 | --- | --- | --- |
 | `admins/{uid}` → `{ email, addedBy, addedAt }` | Admins (or you, in the Firebase Console) | The user themselves (to check their own status) and admins |
 | `userActivity/{uid}` → `{ email, lastSignInAt, lastActiveAt }` | Each signed-in user, for themselves only (from `mini-cart.js` → `user-activity.js`, at most once every 15 minutes per browser session) | Admins only |
-| `users/{uid}/orders/{orderId}` (see [Orders and shipping addresses](#orders-and-shipping-addresses-signed-in-buyers-only)) | The buyer, create only | The buyer and admins (the *Orders* tab uses a collection-group query on `orders`) |
+| `users/{uid}/orders/{orderId}` (see [Orders and shipping addresses](#orders-and-shipping-addresses-signed-in-buyers-only)) | The buyer, create only; admins, constrained lifecycle updates and permanent deletion | The buyer and admins (the all-account scope uses a collection-group query on `orders`) |
 | `users/{uid}/profile/shipping` | The buyer | The buyer and admins |
 
 `userActivity` stores only the email address, last sign-in time and last activity time. It isn't a full account list: only users who have signed in since this was deployed appear. Admins can delete activity records in the dashboard without deleting Firebase Auth accounts. Publish the latest `firestore.rules` to enable these admin-only deletes.
 
 ### Setup steps (one time)
 
-1. **Publish the updated rules** from `firestore.rules` (same way as for carts above: Console → Firestore Database → Rules, or `npx firebase deploy --only firestore:rules --project jgv3d-fc043`). The cart and admin rules are unchanged; the newest parts are the `isOwner()`, `isText()`, `isValidAddress()` and `isValidOrder()` functions and the `profile/shipping`, `orders` and `{path=**}/orders` blocks. Until these are published, checkout shows an "Access was denied" error and nothing is ordered.
+1. **Manually publish the full updated `firestore.rules` in Firebase Console → Firestore Database → Rules → Publish.** Review and preserve any rules for other collections before replacing the editor contents. The PR includes the entire rules file, but merging/deploying the website **does not publish Firestore rules**. The newest change allows only real admins to update lifecycle fields and delete orders at exact `users/{uid}/orders/{orderId}` paths; the recursive collection-group match remains read-only. Until the PR is merged and these rules are published, existing orders can only be removed manually in Firebase Console, and the new site's admin mutations will show permission errors. No production data deletion or Console changes are performed by this implementation.
 2. **Find your UID:** sign in on the live site, then go to Firebase Console → **Authentication → Users** and copy the *User UID* for your account.
 3. **Add the first admin by hand** (bootstrap). Clients can't create the first admin, so this must be done in the console: Firestore Database → **Data** → **Start collection** → Collection ID `admins` → Document ID = **your UID** (paste it exactly, don't use Auto-ID) → add a field such as `email` (string) with your email → **Save**. Any fields are fine; only the document's existence matters.
 4. Visit `/admin.html` while signed in. The dashboard should load. On the **Settings** tab, *Firestore rules status* should show four ✔ checks.
@@ -153,7 +153,7 @@ This pull request **does not** create your database or publish rules. Until you 
 8. Settings: download a JSON backup and check the filename, timestamp, products, users, admins and byte count. Products come from the in-memory CSV (including unsaved edits), not Firestore. No auth passwords or tokens are included.
 9. Settings Maintenance: clear activity only after both confirmations and typing `confirm-clear`. Publish the updated `firestore.rules` first: only current admins can delete activity. Deletes run in batches; a failed later batch does not undo earlier batches. Visitors still signed in may create new activity records afterward.
 10. Reset demo orders removes only `jgv3d_orders` in the viewing browser; carts, auth accounts and Firestore (including account orders) are untouched.
-11. Settings Audit log: check product edits, bulk updates, admin changes, clears and backups; export CSV/JSON, clear the log, and refresh to verify it resets. Audit entries are stored only in browser sessionStorage for this page session, never Firestore.
+11. Settings Audit log: check product edits, bulk updates, admin changes, clears and backups; export CSV/JSON, clear the log, and refresh to verify it resets. This is a **client session log, not an authoritative audit trail**, stored only in browser sessionStorage for this page session, never Firestore. Order entries include only IDs/actions/status/counts, never customer shipping details or cancellation reasons.
 12. Settings: add a second admin by email, then remove them. Then remove yourself → you are sent to `login.html` and `/admin.html` is denied again.
 
 ### Guided product creation and photo publishing
@@ -184,10 +184,15 @@ The raw-field editor remains available for existing products and advanced CSV ed
 
 ### Orders overview
 
-The *Orders* tab has two clearly separated, read-only tables:
+The *Orders* tab keeps real account orders separate from old browser demos:
 
-- **Account orders (Firestore):** every signed-in buyer's orders (newest first, up to 500), with order number, customer email (stored on the order, or looked up from `userActivity`), date, status, item count, total, and a shipping summary including phone, delivery notes and order notes. Use **Refresh account orders** to reload. To change an order's status, edit `status` in Firebase Console → Firestore → `users/{uid}/orders/{orderId}` (use `In Queue`, `In Progress`, `Shipped` or `Completed`); the buyer sees it on *My Orders*.
-- **Local demo orders (this browser only):** old `jgv3d_orders` demo orders saved in the admin's own browser. Settings can reset only these.
+- **Account orders (Firestore):** the default scope is the signed-in admin's **own orders**, not all buyers. Explicitly choose the all-account scope to manage other buyers' orders. Search/filter by full ID, email and status; selection uses complete Firestore document paths, so the same order ID in two accounts cannot select/delete the wrong account. Scope and loaded/filtered/selected counts are shown. Refresh after mutations; buyers observe status changes and deletion on their list/detail pages.
+- **View details / update status:** inspect an order, then choose `In Queue`, `In Progress`, `Shipped`, `Completed` or `Cancelled`. Cancelling asks for confirmation and an optional reason (maximum 500 characters), visible to the buyer. Items, prices, totals, shipping, email, identity and creation date stay unchanged. Updates use a transaction and reject a stale displayed status instead of overwriting another admin's change; refresh and review before retrying. New metadata (`statusUpdatedAt`, `statusUpdatedBy`, `cancellationReason`) is optional for legacy records, and updates do not re-run the creation timestamp validator.
+- **Cancellation is a record status only.** It does **not** issue refunds, take or reverse payments, send shipping notifications, or adjust stock. Handle those separately. No payment processing exists in this site.
+- **Permanent deletion / clearing test orders:** use individual deletion or select the exact existing test orders in the intended scope. The danger preview lists captured paths and the exact count/scope. Review both confirmations and type the required phrase before deletion. Deletion is permanent, not cancellation, and removes only those confirmed order documents—not carts, saved addresses, users, admin membership, activity or unrelated documents. Newly arriving orders are not added to the confirmed set. There is no recursive delete or automatic “test order” detection.
+- **Optional private backup:** explicitly download the captured orders as JSON before deletion if needed. This contains customer personal data; keep it private, do not commit it or share it publicly. It is a user-triggered local download only, never automatically sent elsewhere. The Settings database backup does not include orders.
+- **Partial failure:** deletion uses server-only transactions in chunks of at most 100 paths, with fresh server and transactional admin-membership checks. It fails offline rather than queueing a deletion for a later session. Acknowledged earlier chunks remain deleted if a later chunk fails; the result shows counts and retains only remaining confirmed paths for retry. A failed response can be ambiguous: inspect/refresh before retrying; retrying an already missing confirmed path is safe. Closing/signing out cannot undo writes already accepted by Firestore. Controls are disabled while pending, and stale callbacks are discarded on account changes. Server rules remain authoritative.
+- **Local demo orders (this browser only):** `jgv3d_orders` entries are not Firestore orders and are never imported. The separately labelled reset in Orders (also accessible in Settings) uses the existing browser maintenance mechanism and affects only this browser's demos.
 
 #### Manual order checks
 
@@ -197,12 +202,16 @@ The *Orders* tab has two clearly separated, read-only tables:
 4. Place another order with a different address and **without** ticking "Save this address": Settings still shows the old address.
 5. Sign out and sign in as B: Settings, checkout and *My Orders* show none of A's data. Opening A's order-details link shows "Order not found".
 6. Delete B's saved address in Settings, then check out: the form starts empty.
-7. As an admin, open *Orders*: orders from A and B are both listed.
-8. Rules (with `npm run test:rules`, or the Firestore Rules Playground): a non-admin can't read another user's orders/address, nobody can update/delete an order, and only admins can run the `orders` collection-group query.
+7. As an admin, open *Orders*: own orders are the default. Choose all accounts to see A and B. Use disposable emulator/test-project records, not production customer records, for destructive checks.
+8. Cancel a test order, first dismissing confirmation (no write), then confirming with a reason. The buyer sees `Cancelled`, not completed progress. Test another admin changing the status before your save: it must require a refresh.
+9. Select two test orders with identical IDs in different accounts. Check both full paths in the deletion preview. Cancel either confirmation (no deletion), download a private backup if desired, then confirm only disposable test records. Introduce a new order after preview: it must not be deleted. Simulate a later batch failure and retry only the remaining confirmed set.
+10. Sign out/switch accounts while loading or confirming: old customer data and dialogs disappear, and old callbacks cannot populate the new account. Delete a disposable order and verify its buyer detail view shows “Order not found.”
+11. Reset browser demos from Orders: Firestore orders, carts, saved addresses and accounts remain untouched.
+12. Rules (`npm run test:rules`): owner/non-admin/unauthenticated order updates/deletes are denied; admins may update only valid lifecycle fields with server timestamp and their own UID, or delete exact order documents. Immutable field edits, invalid statuses/reasons, forged metadata and recursive wildcard writes are denied.
 
 ### Not implemented (out of scope)
 
-- No full user-account list or account management (only the minimal `userActivity` records above), no payment processing, no shipping labels, no email notifications, no guest checkout, and no order-status editing from the site (use the Firebase Console).
+- No full user-account list or account management (only the minimal `userActivity` records above), no payment processing/refunds, no shipping labels or notifications, no inventory adjustments, and no guest checkout.
 - No server-side "look up any Firebase Auth user by email": that needs the Admin SDK on a server. Lookup by email only finds users with a `userActivity` record.
 
 ## Developer checks
