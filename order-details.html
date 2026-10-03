@@ -32,7 +32,6 @@
 
   <script src="order-utils.js"></script>
   <script>
-    const CART_KEY = 'jgv3d_cart';
     const ORDERS_KEY = 'jgv3d_orders';
     const ORDER_STATUSES = ['In Queue', 'In Progress', 'Shipped', 'Completed'];
     const STATUS_CLASSES = {
@@ -232,29 +231,14 @@
       renderOrder(order);
     }
 
-    function updateMiniCart() {
-      try {
-        const cart = JSON.parse(localStorage.getItem(CART_KEY)) || [];
-        const totalItems = cart.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-        const miniCartCount = document.getElementById('mini-cart-count');
-        if (miniCartCount) {
-          miniCartCount.textContent = totalItems;
-          miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
-        }
-      } catch (e) {}
-    }
-
     window.addEventListener('storage', (event) => {
       if (event.key === ORDERS_KEY) {
         renderOrderDetails();
       }
-      if (event.key === CART_KEY) {
-        updateMiniCart();
-      }
     });
 
     renderOrderDetails();
-    updateMiniCart();
   </script>
+  <script type="module" src="mini-cart.js"></script>
 </body>
 </html>

@@ -895,6 +895,58 @@ footer a:hover {
   cursor: not-allowed;
 }
 
+.cart-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-left: 4px solid #e67e22;
+  border-radius: 6px;
+  color: #ddd;
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+.cart-status.is-error {
+  border-left-color: #e74c3c;
+  color: #f5b7b1;
+}
+
+.cart-status.is-saved {
+  border-left-color: #28a745;
+}
+
+.cart-status-retry {
+  flex-shrink: 0;
+  background: #e67e22;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cart-status-retry:hover {
+  background: #d35400;
+}
+
+.cart-item button:disabled,
+.cart-item input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cart-demo-note {
+  margin: 12px 0 0;
+  color: #999;
+  font-size: 0.85em;
+  text-align: center;
+}
+
 /* ==========================================================
    Orders Pages
    ========================================================== */

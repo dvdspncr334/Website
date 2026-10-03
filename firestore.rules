@@ -1,0 +1,61 @@
+rules_version = '2';
+
+// JGV3D Firestore security rules.
+//
+// Only the signed-in owner can read or write their own cart at
+// users/{uid}/carts/current. Everything else is denied by default.
+//
+// If your project already has rules for other data, MERGE the
+// `match /users/{uid}/carts/{cartId}` block and the helper functions into
+// your existing rules instead of replacing them (see FIREBASE_SETUP.md).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isCartOwner(uid, cartId) {
+      return request.auth != null && request.auth.uid == uid && cartId == 'current';
+    }
+
+    function isValidItem(item) {
+      return item is map
+        && item.keys().hasAll(['id', 'title', 'price', 'img', 'qty'])
+        && item.keys().hasOnly(['id', 'title', 'price', 'img', 'qty'])
+        && item.id is string && item.id.size() >= 1 && item.id.size() <= 300
+        && item.title is string && item.title.size() >= 1 && item.title.size() <= 300
+        && item.img is string && item.img.size() <= 500
+        && (item.img.matches('https?://.*') || !item.img.matches('.*:.*'))
+        && (item.price is int || item.price is float)
+        && item.price >= 0 && item.price <= 100000
+        && item.qty is int && item.qty >= 1 && item.qty <= 99;
+    }
+
+    // Each write either removes items only, or adds/updates exactly the one
+    // item named by `lastKey` (which must be valid).
+    function isValidCartWrite(before) {
+      let data = request.resource.data;
+      let changes = data.items.diff(before);
+      return data.keys().hasAll(['items', 'lastKey', 'schema', 'updatedAt'])
+        && data.keys().hasOnly(['items', 'lastKey', 'schema', 'updatedAt'])
+        && data.schema == 1
+        && data.updatedAt == request.time
+        && data.items is map
+        && data.items.size() <= 50
+        && data.lastKey is string
+        && data.lastKey.matches('k[0-9a-f]{64}')
+        && (
+          (changes.addedKeys().size() == 0 && changes.changedKeys().size() == 0)
+          || (changes.affectedKeys().hasOnly([data.lastKey])
+              && data.lastKey in data.items
+              && isValidItem(data.items[data.lastKey]))
+        );
+    }
+
+    match /users/{uid}/carts/{cartId} {
+      allow read: if isCartOwner(uid, cartId);
+      allow create: if isCartOwner(uid, cartId) && isValidCartWrite({});
+      allow update: if isCartOwner(uid, cartId)
+        && resource.data.items is map
+        && isValidCartWrite(resource.data.items);
+      allow delete: if isCartOwner(uid, cartId);
+    }
+  }
+}

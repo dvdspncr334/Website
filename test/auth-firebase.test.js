@@ -6,6 +6,8 @@ const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const source = readFileSync(path.join(root, 'auth-firebase.js'), 'utf8');
+const APP_URL = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
+const AUTH_URL = 'https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js';
 const config = {
   apiKey: 'test-api-key', authDomain: 'test.firebaseapp.com',
   projectId: 'test-project', appId: 'test-app'
@@ -14,37 +16,19 @@ const config = {
 async function fixture(options = {}) {
   const calls = [];
   const listeners = new Set();
-  const user = { uid: 'test-user', email: 'user@example.com' };
-  const auth = {
-    currentUser: options.user || null,
-    authStateReady: options.authStateReady || (async () => {})
-  };
-  const elements = {};
-  if (options.ui) {
-    for (const id of [
-      'email-signin', 'auth-fields', 'auth-status', 'sign-in-options', 'signed-in',
-      'auth-user', 'auth-email', 'auth-password', 'sign-out', 'google-signin', 'reset-password'
-    ]) {
-      elements[id] = {
-        value: '', textContent: '', hidden: id === 'signed-in',
-        disabled: id === 'auth-fields', handlers: {},
-        addEventListener(type, callback) { this.handlers[type] = callback; },
-        reportValidity() { return Boolean(this.value); }
-      };
-    }
-  }
+  const user = { uid: 'uid-1', email: 'user@example.com', displayName: 'Ada', photoURL: '', providerData: [{ providerId: 'google.com' }] };
+  const auth = { currentUser: null };
   const context = vm.createContext({
-    ...(options.ui ? { document: { getElementById: id => elements[id] } } : {}),
     localStorage: {
-      getItem() { throw new Error('Auth must not read cart storage'); },
-      setItem() { throw new Error('Auth must not write cart storage'); },
-      removeItem() { throw new Error('Auth must not remove cart storage'); },
+      getItem() { throw new Error('Auth must not read browser storage'); },
+      setItem() { throw new Error('Auth must not write browser storage'); },
+      removeItem() { throw new Error('Auth must not remove browser storage'); },
       clear() { throw new Error('Auth must not clear browser storage'); }
     }
   });
-  function emit(nextUser) {
-    auth.currentUser = nextUser;
-    for (const callback of listeners) callback(nextUser);
+  function emit(next) {
+    auth.currentUser = next;
+    for (const cb of listeners) cb(next);
   }
   function authenticate(method) {
     return async (...args) => {
@@ -56,202 +40,90 @@ async function fixture(options = {}) {
   }
   const sdk = {
     getAuth: app => { calls.push(['getAuth', app]); return auth; },
-    browserLocalPersistence: 'firebase-local-persistence',
-    setPersistence: async (...args) => {
-      calls.push(['setPersistence', ...args]);
-      if (options.persistenceError) throw options.persistenceError;
-    },
-    onAuthStateChanged: (instance, callback) => {
+    onAuthStateChanged: (instance, cb) => {
       assert.equal(instance, auth);
-      listeners.add(callback);
-      callback(auth.currentUser);
-      return () => listeners.delete(callback);
+      listeners.add(cb);
+      // Firebase delivers the initial state asynchronously.
+      Promise.resolve().then(() => { if (listeners.has(cb)) cb(auth.currentUser); });
+      return () => listeners.delete(cb);
     },
+    GoogleAuthProvider: class {},
+    signInWithPopup: authenticate('google'),
     signInWithEmailAndPassword: authenticate('email'),
     createUserWithEmailAndPassword: authenticate('create'),
-    signInWithPopup: authenticate('google'),
-    GoogleAuthProvider: class {
-      setCustomParameters(parameters) { this.parameters = parameters; }
-    },
-    signOut: async instance => {
-      calls.push(['signOut', instance]);
-      if (options.error) throw options.error;
-      emit(null);
-    },
-    sendPasswordResetEmail: async (...args) => {
-      calls.push(['reset', ...args]);
-      if (options.error) throw options.error;
-    }
+    sendPasswordResetEmail: async (...args) => { calls.push(['reset', ...args]); },
+    signOut: async instance => { calls.push(['signOut', instance]); emit(null); }
   };
   async function moduleFor(exports) {
-    const module = new vm.SyntheticModule(Object.keys(exports), function () {
-      for (const [key, value] of Object.entries(exports)) this.setExport(key, value);
+    const m = new vm.SyntheticModule(Object.keys(exports), function () {
+      for (const [k, v] of Object.entries(exports)) this.setExport(k, v);
     }, { context });
-    await module.link(() => {});
-    await module.evaluate();
-    return module;
+    await m.link(() => {});
+    await m.evaluate();
+    return m;
   }
-  const configModule = await moduleFor({ firebaseConfig: options.config || config });
-  const appModule = await moduleFor({
-    initializeApp: settings => { calls.push(['initializeApp', settings]); return 'app'; }
+  const modules = {
+    [APP_URL]: await moduleFor({ initializeApp: settings => { calls.push(['initializeApp', settings]); return 'app'; } }),
+    [AUTH_URL]: await moduleFor(sdk),
+    './firebase-config.js': await moduleFor({ firebaseConfig: config })
+  };
+  const mod = new vm.SourceTextModule(source, { context });
+  await mod.link(specifier => {
+    assert.ok(modules[specifier], `Unexpected import ${specifier}`);
+    return modules[specifier];
   });
-  const authModule = await moduleFor(sdk);
-  const module = new vm.SourceTextModule(source, {
-    context,
-    importModuleDynamically: async specifier => {
-      calls.push(['import', specifier]);
-      if (options.networkError) throw new Error('CDN unreachable');
-      if (specifier.endsWith('/firebase-app.js')) return appModule;
-      if (specifier.endsWith('/firebase-auth.js')) return authModule;
-      throw new Error(`Unexpected SDK import: ${specifier}`);
-    }
-  });
-  await module.link(specifier => {
-    assert.equal(specifier, './firebase-config.js');
-    return configModule;
-  });
-  await module.evaluate();
-  const settle = () => new Promise(resolve => setImmediate(resolve));
-  await settle();
-  return { api: module.namespace, auth, user, calls, emit, elements, settle };
+  await mod.evaluate();
+  return { api: mod.namespace, auth, user, calls, emit };
 }
 
-test('template configuration fails clearly without loading Firebase', async () => {
-  const f = await fixture({ config: { ...config, projectId: 'YOUR_PROJECT_ID' } });
-  await assert.rejects(f.api.getSession(), /firebase-config.js/);
-  assert.equal(f.calls.length, 0);
-});
-
-test('concurrent session requests initialize once and use Firebase persistence', async () => {
-  const f = await fixture({ user: { email: 'restored@example.com' } });
-  const users = await Promise.all([f.api.getSession(), f.api.getSession()]);
-  assert.equal(users[0], f.auth.currentUser);
-  assert.equal(users[1], f.auth.currentUser);
-  assert.equal(f.calls.filter(call => call[0] === 'initializeApp').length, 1);
-  assert.deepEqual(f.calls.find(call => call[0] === 'setPersistence'),
-    ['setPersistence', f.auth, 'firebase-local-persistence']);
-});
-
-test('getSession waits for Firebase to restore the session', async () => {
-  let ready;
-  const restored = new Promise(resolve => { ready = resolve; });
-  const f = await fixture({ authStateReady: () => restored });
-  let resolved = false;
-  const session = f.api.getSession().then(user => { resolved = true; return user; });
-  await f.settle();
-  assert.equal(resolved, false);
-  f.auth.currentUser = f.user;
-  ready();
-  assert.equal(await session, f.user);
-});
-
-test('email login, account creation, Google login and reset delegate to Firebase', async () => {
+test('initializes Firebase once from firebase-config.js and exports app/auth', async () => {
   const f = await fixture();
-  assert.equal(await f.api.signIn('user@example.com', 'test-password'), f.user);
-  assert.equal(await f.api.createAccount('new@example.com', 'new-password'), f.user);
-  assert.equal(await f.api.signInWithGoogle(), f.user);
-  await f.api.resetPassword('user@example.com');
-  assert.deepEqual(f.calls.find(call => call[0] === 'email'),
-    ['email', f.auth, 'user@example.com', 'test-password']);
-  assert.deepEqual(f.calls.find(call => call[0] === 'create'),
-    ['create', f.auth, 'new@example.com', 'new-password']);
-  const provider = f.calls.find(call => call[0] === 'google')[2];
-  assert.equal(provider.parameters.prompt, 'select_account');
-  assert.deepEqual(f.calls.find(call => call[0] === 'reset'),
-    ['reset', f.auth, 'user@example.com']);
+  assert.deepEqual(f.calls.filter(c => c[0] === 'initializeApp'), [['initializeApp', config]]);
+  assert.equal(f.api.app, 'app');
+  assert.equal(f.api.auth, f.auth);
 });
 
-test('observers track restored sessions, sign-in, cross-tab changes and sign-out', async () => {
+test('onUserChanged reports sign-in, account switches and sign-out', async () => {
   const f = await fixture();
   const seen = [];
-  const unsubscribe = await f.api.onSessionChanged(user => seen.push(user));
-  await f.api.signIn('user@example.com', 'test-password');
-  f.emit({ email: 'other-tab@example.com' });
+  const unsubscribe = f.api.onUserChanged(u => seen.push(u && u.id));
+  await Promise.resolve();
+  await f.api.signInWithEmail('user@example.com', 'pw-123456');
+  f.emit({ ...f.user, uid: 'uid-2', providerData: [] });
   await f.api.signOut();
-  assert.equal(await f.api.getSession(), null);
-  assert.deepEqual(seen.map(user => user?.email || null),
-    [null, 'user@example.com', 'other-tab@example.com', null]);
   unsubscribe();
   f.emit(f.user);
-  assert.equal(seen.length, 4);
+  assert.deepEqual(seen, [null, 'uid-1', 'uid-2', null]);
 });
 
-test('provider, network and persistence failures propagate without fake sessions', async () => {
+test('sign-in helpers delegate to Firebase and map the user', async () => {
+  const f = await fixture();
+  const google = await f.api.signInWithGoogle();
+  assert.deepEqual({ ...google }, { id: 'uid-1', email: 'user@example.com', name: 'Ada', photoURL: '', provider: 'google.com' });
+  await f.api.createAccountWithEmail('new@example.com', 'pw-123456');
+  await f.api.resetPassword('user@example.com');
+  assert.deepEqual(f.calls.find(c => c[0] === 'create'), ['create', f.auth, 'new@example.com', 'pw-123456']);
+  assert.deepEqual(f.calls.find(c => c[0] === 'reset'), ['reset', f.auth, 'user@example.com']);
+  assert.equal(await f.api.getSession().then(u => u.id), 'uid-1');
+});
+
+test('sign-in errors propagate and map to friendly messages', async () => {
   const error = { code: 'auth/invalid-credential' };
   const f = await fixture({ error });
-  await assert.rejects(f.api.signIn('user@example.com', 'bad-password'), e => e === error);
+  await assert.rejects(f.api.signInWithEmail('a@b.c', 'bad-password'), e => e === error);
   assert.equal(await f.api.getSession(), null);
-  const offline = await fixture({ networkError: true });
-  await assert.rejects(offline.api.getSession(), /CDN unreachable/);
-  const blocked = await fixture({ persistenceError: error });
-  await assert.rejects(blocked.api.signInWithGoogle(), e => e === error);
-  assert.equal(blocked.calls.some(call => call[0] === 'google'), false);
+  assert.equal(f.api.friendlyError(error), 'Incorrect email or password.');
+  assert.equal(f.api.friendlyError({ code: 'auth/popup-closed-by-user' }), null);
 });
 
-test('login UI reports missing configuration and leaves controls disabled', async () => {
-  const f = await fixture({ ui: true, config: { ...config, apiKey: 'YOUR_FIREBASE_API_KEY' } });
-  assert.match(f.elements['auth-status'].textContent, /firebase-config.js/);
-  assert.equal(f.elements['auth-fields'].disabled, true);
+test('auth module has no cart, Firestore or browser storage code', () => {
+  assert.doesNotMatch(source, /localStorage|sessionStorage|firestore|jgv3d_cart|syncCart/i);
 });
 
-test('login UI handles account creation, reload state, safe labels and sign-out', async () => {
-  const f = await fixture({ ui: true });
-  const e = f.elements;
-  e['auth-email'].value = ' new@example.com ';
-  e['auth-password'].value = 'test-password';
-  e['email-signin'].handlers.submit({
-    preventDefault() {}, submitter: { id: 'create-account' }
-  });
-  await f.settle();
-  assert.equal(f.calls.find(call => call[0] === 'create')[2], 'new@example.com');
-  assert.equal(e['sign-in-options'].hidden, true);
-  assert.equal(e['signed-in'].hidden, false);
-  assert.equal(e['auth-password'].value, '');
-  f.emit({ email: '<img src=x onerror=alert(1)>' });
-  assert.equal(e['auth-user'].textContent, 'Signed in as <img src=x onerror=alert(1)>');
-  await e['sign-out'].handlers.click();
-  assert.equal(e['signed-in'].hidden, true);
-  assert.equal(e['sign-in-options'].hidden, false);
-  assert.equal(e['auth-fields'].disabled, false);
-  const reloaded = await fixture({ ui: true, user: f.user });
-  assert.equal(reloaded.elements['signed-in'].hidden, false);
-});
-
-test('login UI prevents duplicate requests and recovers from sign-in errors', async () => {
-  const f = await fixture({ ui: true, error: { code: 'auth/invalid-credential' } });
-  const e = f.elements;
-  e['auth-email'].value = 'user@example.com';
-  e['auth-password'].value = 'bad-password';
-  const event = { preventDefault() {} };
-  e['email-signin'].handlers.submit(event);
-  e['email-signin'].handlers.submit(event);
-  await f.settle();
-  assert.equal(f.calls.filter(call => call[0] === 'email').length, 1);
-  assert.match(e['auth-status'].textContent, /Check your email and password/);
-  assert.equal(e['auth-fields'].disabled, false);
-  assert.equal(e['auth-password'].value, '');
-});
-
-test('reset only needs email and Google popup errors are actionable', async () => {
-  const f = await fixture({ ui: true });
-  f.elements['reset-password'].handlers.click();
-  assert.equal(f.calls.some(call => call[0] === 'reset'), false);
-  f.elements['auth-email'].value = 'user@example.com';
-  f.elements['reset-password'].handlers.click();
-  await f.settle();
-  assert.match(f.elements['auth-status'].textContent, /If an account exists/);
-  const blocked = await fixture({ ui: true, error: { code: 'auth/popup-blocked' } });
-  blocked.elements['google-signin'].handlers.click();
-  await blocked.settle();
-  assert.match(blocked.elements['auth-status'].textContent, /Allow pop-ups/);
-});
-
-test('login uses relative modules, existing cart display, and accessible sign-out', () => {
+test('login page uses the shared cart badge and never reads a shared cart key', () => {
   const html = readFileSync(path.join(root, 'login.html'), 'utf8');
-  assert.match(html, /type="module" src="auth-firebase.js"/);
-  assert.match(html, /id="auth-email" type="email" autocomplete="email" required/);
-  assert.match(html, /id="auth-password" type="password" autocomplete="current-password" required/);
-  assert.match(html, /id="sign-out"/);
-  assert.match(html, /localStorage.getItem\('jgv3d_cart'\)/);
-  assert.doesNotMatch(source, /localStorage|\/auth\/|innerHTML/);
+  assert.match(html, /from '\.\/auth-firebase\.js'/);
+  assert.match(html, /<script type="module" src="mini-cart\.js"><\/script>/);
+  assert.match(html, /id="signout-btn"/);
+  assert.doesNotMatch(html, /jgv3d_cart|localStorage/);
 });

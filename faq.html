@@ -33,18 +33,6 @@
   </div>
 
   <script>
-    function updateMiniCart() {
-      try {
-        const cart = JSON.parse(localStorage.getItem('jgv3d_cart')) || [];
-        const totalItems = cart.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
-        const miniCartCount = document.getElementById('mini-cart-count');
-        if (miniCartCount) {
-          miniCartCount.textContent = totalItems;
-          miniCartCount.style.display = totalItems > 0 ? 'flex' : 'none';
-        }
-      } catch (e) {}
-    }
-
     function parseCSV(text) {
       if (!text) return [];
 
@@ -183,8 +171,8 @@
       }
     }
 
-    updateMiniCart();
     loadFAQs();
   </script>
+  <script type="module" src="mini-cart.js"></script>
 </body>
 </html>
