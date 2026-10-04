@@ -11,11 +11,13 @@ rules_version = '2';
 // contact email, and cannot save a shipping address. Admins (users with an admins/{uid}
 // document) can update order status/cancellation metadata and delete orders,
 // read every order and saved address, manage the admins list and read/delete
-// userActivity. Everything else is denied by default.
+// userActivity. Signed-in, non-anonymous owners can also read/write their own
+// synced shop/gallery UI preferences (users/{uid}/preferences/{shop|gallery});
+// nobody else, including admins, can. Everything else is denied by default.
 //
 // If your project already has rules for other data, MERGE the
-// `match` blocks (carts, profile/shipping, orders, admins, userActivity) and
-// the helper functions into
+// `match` blocks (carts, profile/shipping, orders, admins, userActivity,
+// preferences) and the helper functions into
 // your existing rules instead of replacing them (see FIREBASE_SETUP.md).
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -206,6 +208,104 @@ service cloud.firestore {
         && request.resource.data.lastSignInAt is timestamp
         && request.resource.data.lastSignInAt <= request.time
         && request.resource.data.lastActiveAt == request.time;
+    }
+
+    // ---- Synced shop/gallery UI preferences (ui-prefs.js, prefs-firebase.js) ----
+    // users/{uid}/preferences/shop and users/{uid}/preferences/gallery hold
+    // non-sensitive UI choices. Only the signed-in, non-anonymous owner may
+    // read or write them; admins have no access. Each write must list (in
+    // `changed`, at most 10) every product/gallery key whose entry it adds or
+    // changes, and those entries are validated; removals are always allowed.
+    function isPrefsOwner(uid) {
+      return isOwner(uid) && !isAnonymousUser();
+    }
+
+    function isPrefsText(value, maxSize) {
+      return value is string && value.size() <= maxSize;
+    }
+
+    function isPrefsUnit(value) {
+      return (value is int || value is float) && value >= 0 && value <= 1;
+    }
+
+    function isValidPrefsView(view) {
+      return view is map
+        && view.keys().hasOnly(['category', 'subcategory', 'search', 'sort'])
+        && isPrefsText(view.get('category', ''), 100)
+        && isPrefsText(view.get('subcategory', ''), 100)
+        && isPrefsText(view.get('search', ''), 100)
+        && isPrefsText(view.get('sort', ''), 40);
+    }
+
+    function isValidPrefsScroll(scroll) {
+      return scroll is map
+        && scroll.keys().hasAll(['anchor', 'offset', 'ratio'])
+        && scroll.keys().hasOnly(['anchor', 'offset', 'ratio'])
+        && isPrefsText(scroll.anchor, 200)
+        && isPrefsUnit(scroll.offset)
+        && isPrefsUnit(scroll.ratio);
+    }
+
+    function isValidOptionPrefs(entry) {
+      return entry is map
+        && entry.keys().hasOnly(['color', 'pickup', 'handedness'])
+        && isPrefsText(entry.get('color', ''), 100)
+        && isPrefsText(entry.get('pickup', ''), 100)
+        && isPrefsText(entry.get('handedness', ''), 100);
+    }
+
+    function isValidPrefsEntry(doc, data, key) {
+      return key is string && key.size() >= 1 && key.size() <= 200
+        && (doc == 'gallery'
+          ? (!(key in data.get('images', {}))
+              || (data.images[key] is int && data.images[key] >= 0 && data.images[key] <= 99))
+          : ((!(key in data.get('options', {})) || isValidOptionPrefs(data.options[key]))
+              && (!(key in data.get('drafts', {})) || isPrefsText(data.drafts[key], 200))));
+    }
+
+    function isValidPrefsEntryAt(doc, data, keys, i) {
+      return keys.size() <= i || isValidPrefsEntry(doc, data, keys[i]);
+    }
+
+    // Added or changed entries of one map must all be listed in `changed`.
+    function prefsMapChangesListed(data, before, field) {
+      let after = data.get(field, {});
+      let previous = before.get(field, {});
+      return after is map && after.size() <= 200
+        && after.diff(previous).addedKeys().union(after.diff(previous).changedKeys()).hasOnly(data.changed);
+    }
+
+    function isValidPrefsWrite(doc, before) {
+      let data = request.resource.data;
+      return data.keys().hasAll(['schema', 'changed', 'updatedAt'])
+        && (doc == 'gallery'
+          ? data.keys().hasOnly(['schema', 'changed', 'updatedAt', 'view', 'scroll', 'images'])
+            && prefsMapChangesListed(data, before, 'images')
+          : data.keys().hasOnly(['schema', 'changed', 'updatedAt', 'view', 'scroll', 'options', 'drafts'])
+            && prefsMapChangesListed(data, before, 'options')
+            && prefsMapChangesListed(data, before, 'drafts'))
+        && data.schema == 1
+        && data.updatedAt == request.time
+        && data.changed is list && data.changed.size() <= 10
+        && (!('view' in data) || isValidPrefsView(data.view))
+        && (!('scroll' in data) || isValidPrefsScroll(data.scroll))
+        && isValidPrefsEntryAt(doc, data, data.changed, 0)
+        && isValidPrefsEntryAt(doc, data, data.changed, 1)
+        && isValidPrefsEntryAt(doc, data, data.changed, 2)
+        && isValidPrefsEntryAt(doc, data, data.changed, 3)
+        && isValidPrefsEntryAt(doc, data, data.changed, 4)
+        && isValidPrefsEntryAt(doc, data, data.changed, 5)
+        && isValidPrefsEntryAt(doc, data, data.changed, 6)
+        && isValidPrefsEntryAt(doc, data, data.changed, 7)
+        && isValidPrefsEntryAt(doc, data, data.changed, 8)
+        && isValidPrefsEntryAt(doc, data, data.changed, 9);
+    }
+
+    match /users/{uid}/preferences/{doc} {
+      allow get: if isPrefsOwner(uid) && doc in ['shop', 'gallery'];
+      allow create: if isPrefsOwner(uid) && doc in ['shop', 'gallery'] && isValidPrefsWrite(doc, {});
+      allow update: if isPrefsOwner(uid) && doc in ['shop', 'gallery'] && isValidPrefsWrite(doc, resource.data);
+      allow delete: if isPrefsOwner(uid) && doc in ['shop', 'gallery'];
     }
   }
 }
