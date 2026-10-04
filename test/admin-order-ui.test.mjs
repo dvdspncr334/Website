@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createAdminOrderUI, captureOrders, filterAdminOrders, remainingOrderCapture, privateOrderExport,
-  orderItemImagePath, formatOrderMoney, splitItemTitle, shipToSummary, ADMIN_ORDER_STATUSES } from '../admin-order-ui.js';
+  orderItemImagePath, formatOrderMoney, splitItemTitle, shipToSummary, ADMIN_ORDER_STATUSES,
+  ORDER_ACCOUNT_SCOPES, ORDER_ACCOUNT_SCOPE_LABELS, orderAccountType } from '../admin-order-ui.js';
 
 class Element {
   constructor(tag = 'div') {
@@ -200,6 +201,27 @@ test('account scope classifies only explicit guest:true orders as guest and comp
   assert.deepEqual(filterAdminOrders(records, { account: 'guest', email: 'buyer-a' }), []);
 });
 
+test('missing, false and non-boolean guest markers are registered (signed-in) orders; only guest===true is guest', () => {
+  const records = [order('marker-missing', 'JGV-00000010'), order('marker-false', 'JGV-00000011', { guest: false }),
+    order('marker-null', 'JGV-00000012', { guest: null }), order('marker-one', 'JGV-00000013', { guest: 1 }),
+    order('marker-true', 'JGV-00000014', { guest: true })];
+  assert.equal(orderAccountType(records[0]), 'signed-in');
+  assert.equal(orderAccountType(undefined), 'signed-in');
+  assert.deepEqual(paths(filterAdminOrders(records, { account: 'guest' })), ['users/marker-true/orders/JGV-00000014']);
+  assert.equal(filterAdminOrders(records, { account: 'signed-in' }).length, 4);
+  assert.equal(filterAdminOrders(records, { account: 'all' }).length, 5);
+  assert.deepEqual(ORDER_ACCOUNT_SCOPES, ['all', 'guest', 'signed-in']);
+  assert.deepEqual(ORDER_ACCOUNT_SCOPE_LABELS, { all: 'All accounts', guest: 'Guest accounts', 'signed-in': 'Signed-in accounts' });
+});
+
+test('initialization and account switches reset to All accounts with a readable default message', () => {
+  const f = fixture();
+  f.get('order-scope').value = 'guest';
+  f.ui.setAccount('other-admin');
+  assert.equal(f.get('order-scope').value, 'all');
+  assert.equal(f.get('account-orders-status').textContent, 'Default scope: All accounts. Refresh to load account orders.');
+});
+
 test('account scope defaults to all accounts, loads every buyer once and narrows guest/signed-in client-side', async () => {
   const scopes = [];
   const f = fixture({ list: async options => { scopes.push(options.scope); return scopedRecords(); } });
@@ -218,8 +240,8 @@ test('account scope defaults to all accounts, loads every buyer once and narrows
   options.value = 'guest';
   await options.emit('change');
   assert.deepEqual(rowPaths(), GUEST_PATHS);
-  assert.match(f.get('order-selection-count').textContent, /2 matching of 2 in scope \(6 loaded\)\. Scope: Guest accounts only/);
-  assert.match(f.get('account-orders-status').textContent, /2 of 6 loaded account order\(s\) in scope: Guest accounts only/);
+  assert.match(f.get('order-selection-count').textContent, /2 matching of 2 in scope \(6 loaded\)\. Scope: Guest accounts\.$/);
+  assert.match(f.get('account-orders-status').textContent, /2 of 6 loaded account order\(s\) in scope: Guest accounts\./);
   options.value = 'signed-in';
   await options.emit('change');
   assert.deepEqual(rowPaths(), SIGNED_IN_PATHS, 'registered buyers A and B, the admin and legacy orders are all signed-in');
@@ -261,7 +283,7 @@ test('switching account scope clears selections and pending dialogs so no hidden
   assert.deepEqual(f.ui.state().selected, SIGNED_IN_PATHS);
   await f.get('order-delete-selected').emit('click');
   assert.deepEqual(paths(f.ui.state().danger.captured), SIGNED_IN_PATHS);
-  assert.match(f.get('order-danger-description').textContent, /Account scope: Signed-in accounts only. EXACT captured documents: 4/);
+  assert.match(f.get('order-danger-description').textContent, /Account scope: Signed-in accounts. EXACT captured documents: 4/);
   assert.deepEqual(f.deletes, []);
 });
 
@@ -278,7 +300,7 @@ test('filtered export and deletion capture exactly the scoped result and refetch
   f.get('order-filter-id').value = '00000001';
   await f.get('order-filter-id').emit('input');
   await f.get('order-delete-filtered').emit('click');
-  assert.match(f.get('order-danger-description').textContent, /"account":"guest".*Account scope: Guest accounts only. EXACT captured documents: 1/);
+  assert.match(f.get('order-danger-description').textContent, /"account":"guest".*Account scope: Guest accounts. EXACT captured documents: 1/);
   assert.equal(f.get('order-danger-paths').textContent, GUEST_PATHS[0]);
   await prepareDelete(f);
   await f.get('order-danger-confirm').emit('click');
@@ -294,7 +316,7 @@ test('filtered export and deletion capture exactly the scoped result and refetch
   await f.get('order-save-status').emit('click');
   assert.deepEqual(scopes, ['all', 'all', 'all']);
   assert.equal(f.get('order-scope').value, 'guest');
-  assert.match(f.get('order-selection-count').textContent, /1 matching of 1 in scope \(5 loaded\)\. Scope: Guest accounts only/);
+  assert.match(f.get('order-selection-count').textContent, /1 matching of 1 in scope \(5 loaded\)\. Scope: Guest accounts\.$/);
 });
 
 test('scope cannot change while loading and a stale all-accounts read is discarded after an account switch', async () => {
