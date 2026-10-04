@@ -497,6 +497,35 @@ test('status success refetches acknowledged snapshot and refresh failure never m
   assert.match(stale.get('order-details-status').textContent, /Close details and Refresh/);
 });
 
+test('warning and outcome messages are complete sentences, never truncated previews', async () => {
+  const WARNING = 'This changes order records only. No refunds, payments, shipping notifications or stock adjustments are performed.';
+  const f = fixture({ remove: async () => { throw new Error('network'); } });
+  await f.ui.refresh();
+  f.ui.openDelete(f.ui.state().orders, 'Selected');
+  assert.ok(f.get('order-danger-description').textContent.endsWith(
+    `cannot be undone. New arrivals are NOT included. ${WARNING}`));
+  await prepareDelete(f);
+  await f.get('order-danger-confirm').emit('click');
+  assert.equal(f.get('order-danger-status').textContent, '0 of 2 confirmed deleted; 2 unconfirmed. Refresh before creating a new deletion '
+    + 'if a network result was lost. Retry only these captured paths.');
+  const ok = fixture();
+  await ok.ui.refresh();
+  ok.ui.openDetails(order().path);
+  ok.get('order-next-status').value = 'Shipped';
+  await ok.get('order-save-status').emit('click');
+  assert.equal(ok.get('order-details-status').textContent, `Saved Shipped. Refetched the current order snapshot. ${WARNING}`);
+  assert.equal(ok.get('account-orders-status').textContent, 'Updated one order to Shipped. Current snapshot refreshed.');
+  let reads = 0;
+  const offline = fixture({ list: async () => { if (reads++) throw new Error('offline'); return [order()]; } });
+  await offline.ui.refresh();
+  offline.ui.openDetails(order().path);
+  offline.get('order-next-status').value = 'Shipped';
+  await offline.get('order-save-status').emit('click');
+  assert.equal(offline.get('order-details-status').textContent,
+    `Saved Shipped. Refresh failed; close details and use Refresh before another update. ${WARNING}`);
+  assert.equal(offline.get('account-orders-status').textContent, 'Updated one order to Shipped. Refresh failed; current list may be stale.');
+});
+
 test('an order removed during successful post-update refetch clears obsolete details and disables updates', async () => {
   let reads = 0;
   const f = fixture({ list: async () => reads++ === 0 ? [order()] : [] });
