@@ -11,7 +11,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = name => readFileSync(path.join(root, name), 'utf8');
-const LOCAL_IMPORT = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"](\.\/[^'"]+\.js)['"]/g;
+const LOCAL_IMPORT = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"](\.\.?\/[^'"]+\.js)['"]/g;
+const localImports = (source, importer) => [...source.matchAll(LOCAL_IMPORT)]
+  .map(match => path.posix.normalize(path.posix.join(path.posix.dirname(importer), match[1])));
 
 function inlineModules(html) {
   return [...html.matchAll(/<script type="module">([\s\S]*?)<\/script>/g)].map(match => match[1]);
@@ -19,12 +21,12 @@ function inlineModules(html) {
 
 function importGraph(sources) {
   const seen = new Set();
-  const queue = sources.flatMap(source => [...source.matchAll(LOCAL_IMPORT)].map(match => match[1].slice(2)));
+  const queue = sources.flatMap(source => localImports(source, 'admin.html'));
   while (queue.length) {
     const file = queue.shift();
     if (seen.has(file)) continue;
     seen.add(file);
-    queue.push(...[...read(file).matchAll(LOCAL_IMPORT)].map(match => match[1].slice(2)));
+    queue.push(...localImports(read(file), file));
   }
   return [...seen].sort();
 }
